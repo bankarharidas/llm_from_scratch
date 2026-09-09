@@ -1,48 +1,14 @@
 import torch
 import torch.nn as nn
 
+loss_function = nn.CrossEntropyLoss()
 
-class CausalSelfAttention(nn.Module):
-    def __init__(self, embedding_size):
-        super().__init__()
+logits = torch.tensor(
+    [[2.0, 5.0, 0.1, 0.2, 0.3], [0.1, 0.2, 4.0, 0.3, 0.5], [0.2, 0.1, 0.3, 5.0, 0.4]]
+)
 
-        self.W_Q = nn.Linear(embedding_size, embedding_size)
-        self.W_K = nn.Linear(embedding_size, embedding_size)
-        self.W_V = nn.Linear(embedding_size, embedding_size)
+targets = torch.tensor([1, 2, 3])
 
-    def forward(self, x):
+loss = loss_function(logits, targets)
 
-        Q = self.W_Q(x)
-        K = self.W_K(x)
-        V = self.W_V(x)
-
-        scores = Q @ K.T
-
-        mask = torch.tril(torch.ones(x.size(0), x.size(0)))
-
-        print("score BEFORE mask:")
-        print(scores)
-
-        scores = scores.masked_fill(mask == 0, float("-inf"))
-
-        print("\nscore AFTER mask:")
-        print(scores)
-
-        weights = torch.softmax(scores, dim=-1)
-
-        print("\nweight:")
-        print(weights)
-
-        output = weights @ V
-
-        return output
-
-
-model = CausalSelfAttention(2)
-
-x = torch.tensor([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]])
-
-output = model(x)
-
-print("\noutput:")
-print(output)
+print("Loss:", loss)
