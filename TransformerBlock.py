@@ -43,41 +43,39 @@ class TransformerBlock(nn.Module):
         return x
 
 
-x = torch.randn(5, 16)
+# block = TransformerBlock(embedding_size=16, num_heads=4)
 
-block = TransformerBlock(embedding_size=16, num_heads=4)
+# output = block(x)
 
-output = block(x)
+# print("Input shape:", x.shape)
+# print("Output shape:", output.shape)
 
-print("Input shape:", x.shape)
-print("Output shape:", output.shape)
+# vocab_size = 100
+# embedding_size = 16
+# num_heads = 4
+# sequence_length = 5
 
-vocab_size = 100
-embedding_size = 16
-num_heads = 4
-sequence_length = 5
+# token_embedding = nn.Embedding(vocab_size, embedding_size)
 
-token_embedding = nn.Embedding(vocab_size, embedding_size)
+# position_embedding = nn.Embedding(sequence_length, embedding_size)
 
-position_embedding = nn.Embedding(sequence_length, embedding_size)
+# block = TransformerBlock(embedding_size, num_heads)
 
-block = TransformerBlock(embedding_size, num_heads)
+# tokens = torch.tensor([5, 12, 27, 8, 19])
 
-tokens = torch.tensor([5, 12, 27, 8, 19])
+# # Token embeddings
+# x = token_embedding(tokens)
 
-# Token embeddings
-x = token_embedding(tokens)
+# # Position embeddings
+# positions = torch.arange(sequence_length)
+# pos = position_embedding(positions)
 
-# Position embeddings
-positions = torch.arange(sequence_length)
-pos = position_embedding(positions)
+# # Combine token + position information
+# x = x + pos
 
-# Combine token + position information
-x = x + pos
+# # Transformer block
+# output = block(x)
 
-# Transformer block
-output = block(x)
-
-print("Tokens:", tokens.shape)
-print("Token embeddings:", x.shape)
-print("Transformer output:", output.shape)
+# # print("Tokens:", tokens.shape)
+# # print("Token embeddings:", x.shape)
+# # print("Transformer output:", output.shape)
