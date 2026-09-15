@@ -1,0 +1,1626 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Transformer LLM Training Loop</title>
+
+<style>
+:root {
+  --ink: #111318;
+  --muted: #626b76;
+  --line: #d9dee4;
+  --node-bg: #ffffff;
+  --border: #17191d;
+  --forward: #111318;
+  --backward: #555d68;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: #eef1f4;
+  color: var(--ink);
+}
+
+body {
+  font-family:
+    "STIX Two Text",
+    "Cambria",
+    "Times New Roman",
+    serif;
+  padding: 24px;
+}
+
+.page {
+  width: min(1700px, calc(100vw - 48px));
+  margin: auto;
+  background: white;
+  border: 1px solid #cfd4da;
+  box-shadow: 0 18px 55px rgba(0,0,0,.09);
+}
+
+.header {
+  padding: 30px 44px 25px;
+  border-bottom: 1px solid var(--line);
+}
+
+.header h1 {
+  margin: 0;
+  font-size: clamp(28px, 3vw, 46px);
+  line-height: 1.1;
+}
+
+.header p {
+  margin: 10px 0 0;
+  color: #5b6672;
+  font-family: Arial, sans-serif;
+  font-size: 14px;
+}
+
+#diagram {
+  position: relative;
+  width: 100%;
+  min-height: 1900px;
+  overflow: hidden;
+  background:
+    linear-gradient(
+      to right,
+      transparent 49.95%,
+      rgba(0,0,0,.018) 50%,
+      transparent 50.05%
+    );
+}
+
+#links {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  overflow: visible;
+}
+
+.node {
+  position: absolute;
+  z-index: 5;
+
+  width: 410px;
+  min-height: 150px;
+
+  padding: 24px 26px;
+
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;
+
+  background: var(--node-bg);
+  border: 1.8px solid var(--border);
+
+  box-shadow:
+    0 9px 25px rgba(25, 35, 45, .075);
+
+  text-align: center;
+
+  transition: none;
+}
+
+.node.wide {
+  width: 470px;
+}
+
+.node.tall {
+  min-height: 220px;
+}
+
+.node mjx-container {
+  margin: 0 auto !important;
+}
+
+.node mjx-container[jax="SVG"] {
+  max-width: 100%;
+}
+
+.node mjx-container svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.section-label {
+  position: absolute;
+  z-index: 4;
+  left: 42px;
+  right: 42px;
+
+  padding-bottom: 8px;
+
+  border-bottom: 1px solid var(--line);
+
+  color: #3f4751;
+  font-size: 16px;
+}
+
+.legend {
+  position: absolute;
+  right: 30px;
+  bottom: 25px;
+
+  z-index: 20;
+
+  padding: 12px 14px;
+
+  background: rgba(255,255,255,.96);
+  border: 1px solid #d5dae0;
+
+  font-family: Arial, sans-serif;
+  font-size: 11px;
+}
+
+.legend-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 5px 0;
+}
+
+.legend-solid,
+.legend-dashed {
+  width: 40px;
+  height: 0;
+  border-top: 2px solid #111318;
+}
+
+.legend-dashed {
+  border-top-style: dashed;
+  border-color: #555d68;
+}
+
+.footer {
+  border-top: 1px solid var(--line);
+  padding: 13px 30px;
+
+  text-align: center;
+
+  font-family: Arial, sans-serif;
+  font-size: 10px;
+  color: #69727d;
+}
+
+@media (max-width: 1100px) {
+
+  body {
+    padding: 10px;
+  }
+
+  .page {
+    width: calc(100vw - 20px);
+  }
+
+  #diagram {
+    min-height: 3000px;
+  }
+
+  .node,
+  .node.wide {
+    width: min(90%, 470px);
+  }
+}
+</style>
+
+<!--
+  IMPORTANT:
+  MathJax configuration is defined BEFORE MathJax itself loads.
+-->
+<script>
+window.MathJax = {
+  tex: {
+    displayMath: [
+      ['\\[', '\\]']
+    ],
+    inlineMath: [
+      ['\\(', '\\)']
+    ],
+
+    macros: {
+      R: '\\mathbb{R}',
+      softmax: '\\operatorname{softmax}',
+      LN: '\\operatorname{LN}',
+      ReLU: '\\operatorname{ReLU}',
+      Adam: '\\operatorname{Adam}'
+    }
+  },
+
+  svg: {
+    fontCache: 'global'
+  },
+
+  startup: {
+    typeset: false
+  }
+};
+</script>
+
+<script
+  src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js">
+</script>
+
+</head>
+
+<body>
+
+<div class="page">
+
+<header class="header">
+  <h1>Complete Transformer LLM Training Loop</h1>
+
+  <p>
+    Forward computation →
+    objective →
+    backpropagation →
+    Adam update →
+    parameter feedback
+  </p>
+</header>
+
+
+<main id="diagram">
+
+<svg id="links"
+     xmlns="http://www.w3.org/2000/svg">
+
+  <defs>
+
+    <marker
+      id="arrowForward"
+      markerWidth="10"
+      markerHeight="10"
+      refX="9"
+      refY="5"
+      orient="auto">
+
+      <path
+        d="M0,0 L10,5 L0,10 Z"
+        fill="#111318"/>
+
+    </marker>
+
+    <marker
+      id="arrowBackward"
+      markerWidth="10"
+      markerHeight="10"
+      refX="9"
+      refY="5"
+      orient="auto">
+
+      <path
+        d="M0,0 L10,5 L0,10 Z"
+        fill="#555d68"/>
+
+    </marker>
+
+  </defs>
+
+  <g id="forwardLayer"></g>
+  <g id="backwardLayer"></g>
+
+</svg>
+
+
+<!-- ============================================================
+     SECTION TITLES
+============================================================ -->
+
+<div id="forwardTitle"
+     class="section-label">
+
+\[
+\mathbf{FORWARD\ PASS}
+\]
+
+</div>
+
+
+<div id="backwardTitle"
+     class="section-label">
+
+\[
+\mathbf{BACKWARD\ PASS\ +\ ADAM\ OPTIMIZATION}
+\]
+
+</div>
+
+
+<!-- ============================================================
+     FORWARD PASS
+============================================================ -->
+
+<div id="n1" class="node wide">
+
+\[
+\begin{aligned}
+X &= [x_1,\ldots,x_T],
+\qquad
+E\in\mathbb{R}^{V\times d}
+\\[5pt]
+H_0 &= E[X]
+\end{aligned}
+\]
+
+\[
+P_{p,2i}
+=
+\sin
+\left(
+\frac{p}{10000^{2i/d}}
+\right)
+\]
+
+\[
+P_{p,2i+1}
+=
+\cos
+\left(
+\frac{p}{10000^{2i/d}}
+\right)
+\]
+
+\[
+Z^{(0)} = H_0 + P
+\]
+
+</div>
+
+
+<div id="n2" class="node tall wide">
+
+\[
+Q_h = ZW_h^Q,
+\qquad
+K_h = ZW_h^K,
+\qquad
+V_h = ZW_h^V
+\]
+
+\[
+S_h =
+\frac{Q_hK_h^\top}
+{\sqrt{d_k}}
+\]
+
+\[
+A_h =
+\operatorname{softmax}
+\left(
+\frac{Q_hK_h^\top}
+{\sqrt{d_k}}
+\right)
+\]
+
+\[
+\operatorname{head}_h=A_hV_h
+\]
+
+\[
+\operatorname{MHA}(Z)
+=
+\operatorname{Concat}
+(\operatorname{head}_1,\ldots,\operatorname{head}_H)W^O
+\]
+
+</div>
+
+
+<div id="n3" class="node wide">
+
+\[
+\widetilde Z
+=
+Z+
+\operatorname{MHA}
+\left(
+\operatorname{LN}(Z)
+\right)
+\]
+
+\[
+\operatorname{LN}(x)
+=
+\gamma
+\odot
+\frac{x-\mu}
+{\sqrt{\sigma^2+\varepsilon}}
++
+\beta
+\]
+
+</div>
+
+
+<div id="n4" class="node tall wide">
+
+\[
+U=\operatorname{LN}(\widetilde Z)
+\]
+
+\[
+F(U)
+=
+\operatorname{ReLU}
+(UW_1+b_1)W_2+b_2
+\]
+
+\[
+\operatorname{ReLU}(x)=\max(0,x)
+\]
+
+\[
+Z'=\widetilde Z+F(U)
+\]
+
+</div>
+
+
+<div id="n5" class="node wide">
+
+\[
+L=Z'W_{\mathrm{vocab}}+b_{\mathrm{vocab}}
+\]
+
+\[
+p_t=\operatorname{softmax}(L_t)
+\]
+
+\[
+p(y_t|x_{&lt;t})
+=
+\frac{
+e^{L_{t,y_t}}
+}{
+\sum_{v=1}^{V}e^{L_{t,v}}
+}
+\]
+
+</div>
+
+
+<div id="n6" class="node tall wide">
+
+\[
+\mathcal L
+=
+-\frac1T
+\sum_{t=1}^{T}
+\log
+p(y_t|x_{&lt;t})
+\]
+
+\[
+=
+-\frac1T
+\sum_{t=1}^{T}
+\log
+\left(
+\frac{
+e^{L_{t,y_t}}
+}{
+\sum_{v=1}^{V}e^{L_{t,v}}
+}
+\right)
+\]
+
+</div>
+
+
+<!-- ============================================================
+     BACKWARD PASS
+============================================================ -->
+
+<div id="n7" class="node wide">
+
+\[
+\frac{\partial\mathcal L}
+{\partial L_t}
+=
+p_t-y_t
+\]
+
+\[
+\frac{\partial\mathcal L}
+{\partial W_{\mathrm{vocab}}}
+=
+Z'^{\top}
+\frac{\partial\mathcal L}
+{\partial L}
+\]
+
+\[
+\frac{\partial\mathcal L}
+{\partial Z'}
+=
+\frac{\partial\mathcal L}
+{\partial L}
+W_{\mathrm{vocab}}^\top
+\]
+
+</div>
+
+
+<div id="n8" class="node tall wide">
+
+\[
+\frac{\partial\mathcal L}{\partial W}
+=
+\frac{\partial\mathcal L}{\partial Y}
+\frac{\partial Y}{\partial W}
+\]
+
+\[
+dZ'=d\widetilde Z+dF
+\]
+
+\[
+dW_2
+=
+\operatorname{ReLU}
+(UW_1+b_1)^\top
+dZ'
+\]
+
+\[
+dW_1
+=
+U^\top
+\left[
+dZ'W_2^\top
+\odot
+\mathbf 1_
+{\{UW_1+b_1>0\}}
+\right]
+\]
+
+</div>
+
+
+<div id="n9" class="node tall wide">
+
+\[
+\frac{\partial\mathcal L}{\partial Q},
+\qquad
+\frac{\partial\mathcal L}{\partial K},
+\qquad
+\frac{\partial\mathcal L}{\partial V}
+\]
+
+\[
+dS
+=
+dA\odot A
+-
+A\odot
+\mathbf 1
+\left(
+(dA\odot A)\mathbf 1^\top
+\right)
+\]
+
+\[
+dQ=
+\frac{dSK}{\sqrt{d_k}}
+\]
+
+\[
+dK=
+\frac{dS^\top Q}{\sqrt{d_k}}
+\]
+
+\[
+dV=A^\top dO
+\]
+
+</div>
+
+
+<div id="n10" class="node wide">
+
+\[
+dW^Q=Z^\top dQ
+\]
+
+\[
+dW^K=Z^\top dK
+\]
+
+\[
+dW^V=Z^\top dV
+\]
+
+\[
+dW^O
+=
+\operatorname{Concat}
+(\operatorname{head}_1,\ldots,\operatorname{head}_H)^\top
+dZ
+\]
+
+</div>
+
+
+<div id="n11" class="node tall wide">
+
+\[
+g_\theta
+=
+\frac{\partial\mathcal L}
+{\partial\theta}
+\]
+
+\[
+g_\theta
+=
+g_{\theta^{(L)}}
+\prod_{\ell=L}^{1}
+\frac{\partial\theta^{(\ell)}}
+{\partial\theta^{(\ell-1)}}
+\]
+
+\[
+\theta
+\in
+\left\{
+E,
+W^Q,W^K,W^V,W^O,
+W_1,W_2,
+W_{\mathrm{vocab}},
+\gamma,\beta,\ldots
+\right\}
+\]
+
+</div>
+
+
+<div id="n12" class="node tall wide">
+
+\[
+m_t
+=
+\beta_1m_{t-1}
++
+(1-\beta_1)g_t
+\]
+
+\[
+v_t
+=
+\beta_2v_{t-1}
++
+(1-\beta_2)g_t^2
+\]
+
+\[
+\hat m_t
+=
+\frac{m_t}{1-\beta_1^t}
+\]
+
+\[
+\hat v_t
+=
+\frac{v_t}{1-\beta_2^t}
+\]
+
+\[
+\theta_t
+=
+\theta_{t-1}
+-
+\eta
+\frac{\hat m_t}
+{\sqrt{\hat v_t}+\varepsilon}
+\]
+
+</div>
+
+
+<div id="n13" class="node tall wide">
+
+\[
+\theta_{t+1}
+=
+\theta_t
+-
+\eta
+\frac{\hat m_t}
+{\sqrt{\hat v_t}+\varepsilon}
+\]
+
+\[
+\theta
+\leftarrow
+\theta-\Delta\theta
+\]
+
+\[
+\theta
+\in
+\left\{
+E,W^Q,W^K,W^V,W^O,
+W_1,W_2,
+W_{\mathrm{vocab}},
+\gamma,\beta
+\right\}
+\]
+
+\[
+\boxed{
+\text{Updated model parameters}
+}
+\]
+
+</div>
+
+
+<div class="legend">
+
+  <div class="legend-row">
+    <span class="legend-solid"></span>
+    Forward computation
+  </div>
+
+  <div class="legend-row">
+    <span class="legend-dashed"></span>
+    Backward gradients / optimizer update
+  </div>
+
+</div>
+
+</main>
+
+
+<footer class="footer">
+Transformer decoder training loop · matrix calculus · cross-entropy objective · Adam optimization
+</footer>
+
+</div>
+
+
+<script>
+
+/* ================================================================
+   POSITIONING LIBRARY
+================================================================ */
+
+const positioning = {
+
+  below(node, reference, gap) {
+
+    return {
+      x: reference.x,
+      y: reference.y + reference.h + gap
+    };
+
+  },
+
+  rightOf(node, reference, gap) {
+
+    return {
+      x: reference.x + reference.w + gap,
+      y: reference.y
+    };
+
+  }
+
+};
+
+
+/* ================================================================
+   CALC LIBRARY
+================================================================ */
+
+const calc = {
+
+  centerX(containerWidth, nodeWidth) {
+
+    return (containerWidth - nodeWidth) / 2;
+
+  },
+
+  centerY(node) {
+
+    return node.y + node.h / 2;
+
+  },
+
+  right(node) {
+
+    return node.x + node.w;
+
+  },
+
+  bottom(node) {
+
+    return node.y + node.h;
+
+  },
+
+  midpoint(a, b) {
+
+    return {
+      x: (a.x + b.x) / 2,
+      y: (a.y + b.y) / 2
+    };
+
+  }
+
+};
+
+
+/* ================================================================
+   MEASUREMENT
+================================================================ */
+
+const diagram =
+  document.getElementById("diagram");
+
+
+function measure(id) {
+
+  const el =
+    document.getElementById(id);
+
+  const rect =
+    el.getBoundingClientRect();
+
+  const base =
+    diagram.getBoundingClientRect();
+
+  return {
+
+    x: rect.left - base.left,
+    y: rect.top - base.top,
+
+    w: rect.width,
+    h: rect.height
+
+  };
+
+}
+
+
+function place(id, x, y) {
+
+  const el =
+    document.getElementById(id);
+
+  el.style.left =
+    `${Math.round(x)}px`;
+
+  el.style.top =
+    `${Math.round(y)}px`;
+
+}
+
+
+/* ================================================================
+   ARROW ANCHORS
+================================================================ */
+
+function anchor(node, side) {
+
+  if (side === "top") {
+
+    return {
+      x: node.x + node.w / 2,
+      y: node.y
+    };
+
+  }
+
+  if (side === "bottom") {
+
+    return {
+      x: node.x + node.w / 2,
+      y: node.y + node.h
+    };
+
+  }
+
+  if (side === "left") {
+
+    return {
+      x: node.x,
+      y: node.y + node.h / 2
+    };
+
+  }
+
+  return {
+
+    x: node.x + node.w,
+    y: node.y + node.h / 2
+
+  };
+
+}
+
+
+/* ================================================================
+   FORWARD ORTHOGONAL ROUTING
+================================================================ */
+
+function forwardPath(a, b) {
+
+  const s =
+    anchor(a, "bottom");
+
+  const t =
+    anchor(b, "top");
+
+  const mid =
+    (s.y + t.y) / 2;
+
+  return [
+
+    `M ${s.x} ${s.y}`,
+
+    `L ${s.x} ${mid}`,
+
+    `L ${t.x} ${mid}`,
+
+    `L ${t.x} ${t.y}`
+
+  ].join(" ");
+
+}
+
+
+/* ================================================================
+   BACKWARD ROUTING
+================================================================ */
+
+function backwardPath(a, b, channelX) {
+
+  const s =
+    anchor(a, "right");
+
+  const t =
+    anchor(b, "right");
+
+  return [
+
+    `M ${s.x} ${s.y}`,
+
+    `L ${channelX} ${s.y}`,
+
+    `L ${channelX} ${t.y}`,
+
+    `L ${t.x} ${t.y}`
+
+  ].join(" ");
+
+}
+
+
+/* ================================================================
+   SVG PATH
+================================================================ */
+
+function addPath(
+  layer,
+  pathData,
+  backward = false
+) {
+
+  const path =
+    document.createElementNS(
+      "http://www.w3.org/2000/svg",
+      "path"
+    );
+
+  path.setAttribute(
+    "d",
+    pathData
+  );
+
+  path.setAttribute(
+    "fill",
+    "none"
+  );
+
+  path.setAttribute(
+    "stroke",
+    backward
+      ? "#555d68"
+      : "#111318"
+  );
+
+  path.setAttribute(
+    "stroke-width",
+    backward ? "2" : "2.4"
+  );
+
+  path.setAttribute(
+    "stroke-linecap",
+    "round"
+  );
+
+  path.setAttribute(
+    "stroke-linejoin",
+    "round"
+  );
+
+  if (backward) {
+
+    path.setAttribute(
+      "stroke-dasharray",
+      "9 8"
+    );
+
+    path.setAttribute(
+      "marker-end",
+      "url(#arrowBackward)"
+    );
+
+  } else {
+
+    path.setAttribute(
+      "marker-end",
+      "url(#arrowForward)"
+    );
+
+  }
+
+  layer.appendChild(path);
+
+}
+
+
+/* ================================================================
+   MAIN LAYOUT
+================================================================ */
+
+function layout() {
+
+  const width =
+    diagram.clientWidth;
+
+  const nodeWidth =
+    Math.min(
+      470,
+      width - 80
+    );
+
+  const centerX =
+    calc.centerX(
+      width,
+      nodeWidth
+    );
+
+
+  /* ------------------------------------------------------------
+     FORWARD COLUMN
+  ------------------------------------------------------------ */
+
+  place(
+    "n1",
+    centerX,
+    110
+  );
+
+  let n1 =
+    measure("n1");
+
+
+  place(
+    "n2",
+    centerX,
+    positioning
+      .below(
+        null,
+        n1,
+        70
+      ).y
+  );
+
+  let n2 =
+    measure("n2");
+
+
+  place(
+    "n3",
+    centerX,
+    positioning
+      .below(
+        null,
+        n2,
+        70
+      ).y
+  );
+
+  let n3 =
+    measure("n3");
+
+
+  place(
+    "n4",
+    centerX,
+    positioning
+      .below(
+        null,
+        n3,
+        70
+      ).y
+  );
+
+  let n4 =
+    measure("n4");
+
+
+  place(
+    "n5",
+    centerX,
+    positioning
+      .below(
+        null,
+        n4,
+        70
+      ).y
+  );
+
+  let n5 =
+    measure("n5");
+
+
+  place(
+    "n6",
+    centerX,
+    positioning
+      .below(
+        null,
+        n5,
+        70
+      ).y
+  );
+
+  let n6 =
+    measure("n6");
+
+
+  /* ------------------------------------------------------------
+     BACKWARD COLUMN
+  ------------------------------------------------------------ */
+
+  const gap =
+    Math.min(
+      120,
+      width * 0.07
+    );
+
+  const backWidth =
+    measure("n7").w;
+
+  let backX =
+    centerX +
+    nodeWidth +
+    gap;
+
+  if (
+    backX + backWidth >
+    width - 30
+  ) {
+
+    backX =
+      width -
+      backWidth -
+      30;
+
+  }
+
+
+  place(
+    "n7",
+    backX,
+    n6.y + 10
+  );
+
+  let n7 =
+    measure("n7");
+
+
+  place(
+    "n8",
+    backX,
+    positioning
+      .below(
+        null,
+        n7,
+        60
+      ).y
+  );
+
+  let n8 =
+    measure("n8");
+
+
+  place(
+    "n9",
+    backX,
+    positioning
+      .below(
+        null,
+        n8,
+        60
+      ).y
+  );
+
+  let n9 =
+    measure("n9");
+
+
+  place(
+    "n10",
+    backX,
+    positioning
+      .below(
+        null,
+        n9,
+        60
+      ).y
+  );
+
+  let n10 =
+    measure("n10");
+
+
+  place(
+    "n11",
+    backX,
+    positioning
+      .below(
+        null,
+        n10,
+        60
+      ).y
+  );
+
+  let n11 =
+    measure("n11");
+
+
+  place(
+    "n12",
+    backX,
+    positioning
+      .below(
+        null,
+        n11,
+        60
+      ).y
+  );
+
+  let n12 =
+    measure("n12");
+
+
+  place(
+    "n13",
+    backX,
+    positioning
+      .below(
+        null,
+        n12,
+        60
+      ).y
+  );
+
+  let n13 =
+    measure("n13");
+
+
+  /* ------------------------------------------------------------
+     SECTION TITLES
+  ------------------------------------------------------------ */
+
+  document
+    .getElementById("forwardTitle")
+    .style.top = "42px";
+
+
+  document
+    .getElementById("backwardTitle")
+    .style.top =
+      `${n6.y + n6.h + 25}px`;
+
+
+  /* ------------------------------------------------------------
+     SVG SIZE
+  ------------------------------------------------------------ */
+
+  const nodes = [
+    n1,n2,n3,n4,n5,n6,
+    n7,n8,n9,n10,n11,n12,n13
+  ];
+
+  const bottom =
+    Math.max(
+      ...nodes.map(n => n.y + n.h)
+    );
+
+  const height =
+    bottom + 150;
+
+  diagram.style.minHeight =
+    `${Math.max(1900, height)}px`;
+
+
+  const svg =
+    document.getElementById("links");
+
+  svg.setAttribute(
+    "width",
+    width
+  );
+
+  svg.setAttribute(
+    "height",
+    height
+  );
+
+  svg.setAttribute(
+    "viewBox",
+    `0 0 ${width} ${height}`
+  );
+
+
+  /* ------------------------------------------------------------
+     RESET ARROWS
+  ------------------------------------------------------------ */
+
+  document
+    .getElementById("forwardLayer")
+    .replaceChildren();
+
+  document
+    .getElementById("backwardLayer")
+    .replaceChildren();
+
+
+  /* ------------------------------------------------------------
+     FORWARD ARROWS
+  ------------------------------------------------------------ */
+
+  const forwardPairs = [
+
+    ["n1","n2"],
+    ["n2","n3"],
+    ["n3","n4"],
+    ["n4","n5"],
+    ["n5","n6"]
+
+  ];
+
+  for (
+    const [a,b]
+    of forwardPairs
+  ) {
+
+    addPath(
+
+      document
+        .getElementById("forwardLayer"),
+
+      forwardPath(
+        measure(a),
+        measure(b)
+      ),
+
+      false
+
+    );
+
+  }
+
+
+  /* ------------------------------------------------------------
+     BACKWARD ARROWS
+  ------------------------------------------------------------ */
+
+  const backwardPairs = [
+
+    ["n6","n7"],
+    ["n7","n8"],
+    ["n8","n9"],
+    ["n9","n10"],
+    ["n10","n11"],
+    ["n11","n12"],
+    ["n12","n13"]
+
+  ];
+
+  const channelX =
+    Math.min(
+      width - 20,
+      backX +
+      backWidth +
+      35
+    );
+
+
+  for (
+    const [a,b]
+    of backwardPairs
+  ) {
+
+    addPath(
+
+      document
+        .getElementById("backwardLayer"),
+
+      backwardPath(
+        measure(a),
+        measure(b),
+        channelX
+      ),
+
+      true
+
+    );
+
+  }
+
+
+  /* ------------------------------------------------------------
+     ADAM → MODEL FEEDBACK LOOP
+  ------------------------------------------------------------ */
+
+  const adam =
+    measure("n13");
+
+  const input =
+    measure("n1");
+
+  const feedbackX =
+    Math.max(
+      25,
+      centerX - 85
+    );
+
+  const start =
+    anchor(adam, "left");
+
+  const end =
+    anchor(input, "left");
+
+
+  const loop = [
+
+    `M ${start.x} ${start.y}`,
+
+    `L ${feedbackX} ${start.y}`,
+
+    `L ${feedbackX} ${end.y}`,
+
+    `L ${end.x} ${end.y}`
+
+  ].join(" ");
+
+
+  addPath(
+
+    document
+      .getElementById("backwardLayer"),
+
+    loop,
+
+    true
+
+  );
+
+}
+
+
+/* ================================================================
+   CRITICAL FIX:
+   WAIT FOR MATHJAX BEFORE LAYOUT
+================================================================ */
+
+async function initialize() {
+
+  try {
+
+    /*
+      Wait until MathJax is actually ready.
+    */
+
+    await MathJax.startup.promise;
+
+
+    /*
+      Explicitly typeset the complete diagram.
+    */
+
+    await MathJax.typesetPromise([
+      document.getElementById("diagram")
+    ]);
+
+
+    /*
+      Allow browser layout to settle.
+    */
+
+    requestAnimationFrame(() => {
+
+      requestAnimationFrame(() => {
+
+        layout();
+
+      });
+
+    });
+
+  }
+
+  catch (error) {
+
+    console.error(
+      "MathJax initialization failed:",
+      error
+    );
+
+    /*
+      Keep the page usable instead of leaving
+      the diagram incorrectly positioned.
+    */
+
+    document
+      .getElementById("diagram")
+      .setAttribute(
+        "data-mathjax-error",
+        "true"
+      );
+
+  }
+
+}
+
+
+/* ================================================================
+   RESIZE
+================================================================ */
+
+let resizeTimer;
+
+window.addEventListener(
+  "resize",
+  () => {
+
+    clearTimeout(resizeTimer);
+
+    resizeTimer =
+      setTimeout(
+        layout,
+        120
+      );
+
+  }
+);
+
+
+/* ================================================================
+   START
+================================================================ */
+
+window.addEventListener(
+  "load",
+  initialize
+);
+
+</script>
+
+</body>
+</html>
