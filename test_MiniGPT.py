@@ -128,3 +128,24 @@ logits = model(tokens)
 
 print("Tokens:", tokens.shape)
 print("Logits:", logits.shape)
+
+optimizer = torch.optim.Adam(model.parameters(), lr=0.001)
+
+loss_function = nn.CrossEntropyLoss()
+
+targets = torch.tensor([12, 27, 8, 19, 3, 45, 7, 15, 2, 64])
+
+for step in range(100):
+
+    optimizer.zero_grad()
+
+    logits = model(tokens)
+
+    loss = loss_function(logits, targets)
+
+    loss.backward()
+
+    optimizer.step()
+
+    if step % 10 == 0:
+        print("Step:", step, "Loss:", loss.item())
