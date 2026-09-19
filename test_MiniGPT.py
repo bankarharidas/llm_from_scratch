@@ -149,3 +149,12 @@ for step in range(100):
 
     if step % 10 == 0:
         print("Step:", step, "Loss:", loss.item())
+
+with torch.no_grad():
+
+    logits = model(tokens)
+
+    predictions = torch.argmax(logits, dim=-1)
+
+    print("Targets:    ", targets)
+    print("Predictions:", predictions)
