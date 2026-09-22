@@ -1,27 +1,31 @@
 import torch
-import torch.nn as nn
 
+tokens = torch.tensor([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15])
 
-class MultiHeadAttention(nn.Module):
-    def __init__(self, embedding_size, num_head):
-        super().__init__()
+sequence_length = 4
 
-        self.embedding_size = embedding_size
-        self.num_head = num_head
-        self.num_dim = embedding_size // num_head
+inputs = []
+targets = []
 
-        self.W_Q = nn.Linear(embedding_size, embedding_size)
-        self.W_K = nn.Linear(embedding_size, embedding_size)
-        self.W_V = nn.Linear(embedding_size, embedding_size)
-        self.W_O = nn.Linear(embedding_size, embedding_size)
+for i in range(len(tokens) - sequence_length):
+    inputs_chunk = tokens[i : i + 4]
+    targets_chunk = tokens[i + 1 : i + 5]
 
-    def forward(self, x):
-        Q = self.W_Q(x)
-        K = self.W_K(x)
-        V = self.W_V(x)
+    inputs.append(inputs_chunk)
+    targets.append(targets_chunk)
 
-        Q = Q.transpose(0, 1)
-        K = K.transpose(0, 1)
-        V = V.transpose(0, 1)
+# print(inputs)
+# print(targets)
+inputs = torch.stack(inputs)
+targets = torch.stack(targets)
 
-        Q = Q.view(x.size(0), self.num_head, self.num_dim)
+print(inputs.shape)
+print(targets.shape)
+
+batch_size = 2
+
+batch_inputs = inputs[:batch_size]
+batch_targets = targets[:batch_size]
+
+print(batch_inputs)
+print(batch_targets)
