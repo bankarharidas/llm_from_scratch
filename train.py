@@ -14,7 +14,7 @@ target = torch.tensor([10.0, 20.0])
 loss_fn = nn.MSELoss()
 
 # Optimizer
-optimizer = torch.optim.SGD(model.parameters(), lr=0.01)
+optimizer = torch.optim.SGD(model.parameters(), lr=0.0001)
 
 # Training
 for step in range(1000):
