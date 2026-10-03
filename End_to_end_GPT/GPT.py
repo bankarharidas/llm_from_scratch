@@ -206,80 +206,80 @@ class MiniGPT(nn.Module):
         return logits
 
 
-# -------------------------
-# Model configuration
-# -------------------------
+# # -------------------------
+# # Model configuration
+# # -------------------------
 
-vocab_size = 1000
-embedding_size = 128
-num_heads = 4
-num_blocks = 4
-sequence_length = 128
-ffn_hidden_size = 512
+# vocab_size = 17
+# embedding_size = 128
+# num_heads = 4
+# num_blocks = 4
+# sequence_length = 128
+# ffn_hidden_size = 512
 
-# -------------------------
-# Create model
-# -------------------------
+# # -------------------------
+# # Create model
+# # -------------------------
 
-model = MiniGPT(
-    vocab_size=vocab_size,
-    embedding_size=embedding_size,
-    num_heads=num_heads,
-    num_blocks=num_blocks,
-    sequence_length=sequence_length,
-    ffn_hidden_size=ffn_hidden_size,
-)
+# model = MiniGPT(
+#     vocab_size=vocab_size,
+#     embedding_size=embedding_size,
+#     num_heads=num_heads,
+#     num_blocks=num_blocks,
+#     sequence_length=sequence_length,
+#     ffn_hidden_size=ffn_hidden_size,
+# )
 
-# -------------------------
-# Random training batch
-# -------------------------
+# # -------------------------
+# # Random training batch
+# # -------------------------
 
-tokens = torch.randint(0, vocab_size, (8, 32))
+# tokens = torch.randint(0, vocab_size, (8, 32))
 
-inputs = tokens[:, :-1]
-targets = tokens[:, 1:]
+# inputs = tokens[:, :-1]
+# targets = tokens[:, 1:]
 
-# -------------------------
-# Forward pass
-# -------------------------
+# # -------------------------
+# # Forward pass
+# # -------------------------
 
-logits = model(inputs)
+# logits = model(inputs)
 
-# -------------------------
-# Loss
-# -------------------------
+# # -------------------------
+# # Loss
+# # -------------------------
 
-loss = F.cross_entropy(logits.reshape(-1, vocab_size), targets.reshape(-1))
+# loss = F.cross_entropy(logits.reshape(-1, vocab_size), targets.reshape(-1))
 
-print("Tokens :", tokens.shape)
-print("Inputs :", inputs.shape)
-print("Targets:", targets.shape)
-print("Logits :", logits.shape)
-print("Loss   :", loss.item())
+# print("Tokens :", tokens.shape)
+# print("Inputs :", inputs.shape)
+# print("Targets:", targets.shape)
+# print("Logits :", logits.shape)
+# print("Loss   :", loss.item())
 
-# -------------------------
-# Optimizer
-# -------------------------
+# # -------------------------
+# # Optimizer
+# # -------------------------
 
-optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4)
+# optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4)
 
-# -------------------------
-# Backward + update
-# -------------------------
+# # -------------------------
+# # Backward + update
+# # -------------------------
 
-optimizer.zero_grad()
+# optimizer.zero_grad()
 
-loss.backward()
+# loss.backward()
 
-optimizer.step()
+# optimizer.step()
 
-print("Loss   :", loss.item())
-print("Training step completed!")
+# print("Loss   :", loss.item())
+# print("Training step completed!")
 
-# -------------------------
-# Parameter count
-# -------------------------
+# # -------------------------
+# # Parameter count
+# # -------------------------
 
-total_parameters = sum(p.numel() for p in model.parameters())
+# total_parameters = sum(p.numel() for p in model.parameters())
 
-print("Total parameters:", total_parameters)
+# print("Total parameters:", total_parameters)
