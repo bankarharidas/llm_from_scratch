@@ -57,8 +57,8 @@ model = MiniGPT(
     ffn_hidden_size=ffn_hidden_size,
 )
 
-optimizer = torch.optim.AdamW(model.parameters(), lr=3e-5)
-num_steps = 10000
+optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4)
+num_steps = 1000
 
 for step in range(num_steps):
     inputs, targets = get_batch(train_data, batch_size, sequence_length)
