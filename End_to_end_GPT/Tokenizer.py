@@ -88,7 +88,7 @@ num_steps = 1000
 for step in range(num_steps):
 
     # Get a fresh batch
-    inputs, targets = get_batch(train_data, batch_size=8, sequence_length=128)
+    inputs, targets = get_batch(train_data, batch_size, sequence_length)
 
     # Forward
     logits = model(inputs)
@@ -114,7 +114,7 @@ model.eval()
 
 with torch.no_grad():
 
-    val_inputs, val_targets = get_batch(val_data, batch_size=8, sequence_length=128)
+    val_inputs, val_targets = get_batch(val_data, batch_size, sequence_length)
 
     val_logits = model(val_inputs)
 
@@ -266,5 +266,3 @@ result = generate(
 )
 
 print(result)
-
-# result = generate(model, "the ", max_new_tokens=100)
