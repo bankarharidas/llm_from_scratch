@@ -130,7 +130,12 @@ stoi = checkpoint["stoi"]
 itos = checkpoint["itos"]
 
 result = generate(
-    loaded_model, "sat ", max_new_tokens=100, temperature=0.8, top_k=5, top_p=0.9
+    loaded_model,
+    "My clerk hath some good comforts too for you ",
+    max_new_tokens=100,
+    temperature=0.8,
+    top_k=5,
+    top_p=0.9,
 )
 
 print(result)

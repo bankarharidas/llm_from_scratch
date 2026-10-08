@@ -2,13 +2,9 @@ import torch
 import torch.nn.functional as F
 from GPT import MiniGPT
 
-text = """
-hello world
-hello cat
-hello dog
-the cat sat on the mat
-the dog sat on the floor
-""" * 100
+with open(f"input.txt", "r", encoding="utf-8") as f:
+    text = f.read()
+
 
 chars = sorted(set(text))
 

@@ -37,7 +37,7 @@ ffn_hidden_size = 512
 
 optimizer = torch.optim.AdamW(model.parameters(), lr=3e-4)
 
-num_steps = 1000
+num_steps = 3001
 
 for step in range(num_steps):
 
