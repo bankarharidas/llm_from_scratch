@@ -175,7 +175,7 @@ class MultiHeadAttention(nn.Module):
 
         self.W_O = nn.Linear(embedding_size, embedding_size)
 
-    def forward(self, x):
+    def forward(self, x, past_k=None, past_v=None, start_position=0):
 
         # x: [B, T, C]
         B, T, C = x.shape
@@ -195,8 +195,22 @@ class MultiHeadAttention(nn.Module):
         V = V.transpose(1, 2)
 
         # RoPE
-        Q = apply_rope(Q)
-        K = apply_rope(K)
+        Q = apply_rope(Q, start_position=start_position)
+
+        K = apply_rope(K, start_position=start_position)
+
+        # =========================
+        # KV Cache
+        # =========================
+
+        if past_k is not None:
+            K = torch.cat([past_k, K], dim=2)
+
+        if past_v is not None:
+            V = torch.cat([past_v, V], dim=2)
+
+        new_k = K
+        new_v = V
 
         # Attention scores
         scores = Q @ K.transpose(-2, -1)
@@ -220,7 +234,7 @@ class MultiHeadAttention(nn.Module):
 
         output = self.W_O(output)
 
-        return output
+        return output, new_k, new_v
 
 
 # =========================
@@ -270,15 +284,19 @@ class TransformerBlock(nn.Module):
 
         self.ffn = SwiGLU(embedding_size, ffn_hidden_size)
 
-    def forward(self, x):
+    def forward(self, x, past_k=None, past_v=None, start_position=0):
 
         # Attention + residual
-        x = x + self.attention(self.norm1(x))
+        attention_output, new_k, new_v = self.attention(
+            self.norm1(x), past_k=past_k, past_v=past_v, start_position=start_position
+        )
+
+        x = x + attention_output
 
         # FFN + residual
         x = x + self.ffn(self.norm2(x))
 
-        return x
+        return x, new_k, new_v
 
 
 # =========================
@@ -322,7 +340,7 @@ class MiniGPT(nn.Module):
         # LM Head
         self.output_layer = nn.Linear(embedding_size, vocab_size, bias=False)
 
-    def forward(self, tokens):
+    def forward(self, tokens, past_kv=None, start_position=0):
 
         # tokens: [B, T]
         B, T = tokens.shape
@@ -332,12 +350,25 @@ class MiniGPT(nn.Module):
         # [B, T] -> [B, T, C]
         x = self.token_embedding(tokens)
 
-        for block in self.blocks:
-            x = block(x)
+        # for block in self.blocks:
+        #     x = block(x)
 
         # Transformer blocks
-        for block in self.blocks:
-            x = block(x)
+        new_kv = []
+
+        for layer_index, block in enumerate(self.blocks):
+
+            if past_kv is not None:
+                past_k, past_v = past_kv[layer_index]
+            else:
+                past_k = None
+                past_v = None
+
+            x, new_k, new_v = block(
+                x, past_k=past_k, past_v=past_v, start_position=start_position
+            )
+
+            new_kv.append((new_k, new_v))
 
         # Final normalization
         x = self.final_norm(x)
@@ -345,7 +376,7 @@ class MiniGPT(nn.Module):
         # [B, T, C] -> [B, T, vocab_size]
         logits = self.output_layer(x)
 
-        return logits
+        return logits, new_kv
 
 
 # =========================
@@ -395,6 +426,35 @@ def main():
 
     print("Optimizer ready!")
 
+    model.eval()
+
+    test_tokens = torch.randint(0, vocab_size, (1, 5))
+
+    with torch.no_grad():
+
+        logits, kv_cache = model(test_tokens)
+
+    print("Test tokens shape:", test_tokens.shape)
+    print("Logits shape:", logits.shape)
+    print("Number of KV layers:", len(kv_cache))
+
+    print("K cache shape:", kv_cache[0][0].shape)
+
+    print("V cache shape:", kv_cache[0][1].shape)
+
+    # =========================
+    # Load trained checkpoint
+    # =========================
+
+    checkpoint = torch.load("best_model.pth", weights_only=False)
+
+    model.load_state_dict(checkpoint["model_state_dict"])
+
+    model.eval()
+
+    print("Best checkpoint loaded!")
+    print("Best step:", checkpoint["step"])
+
     # =========================
     # Training
     # =========================
@@ -409,7 +469,7 @@ def main():
         inputs, targets = get_batch(train_data, batch_size, sequence_length)
 
         # Forward pass
-        logits = model(inputs)
+        logits, _ = model(inputs)
 
         # Loss
         loss = F.cross_entropy(logits.reshape(-1, vocab_size), targets.reshape(-1))
@@ -453,7 +513,7 @@ def main():
                     val_data, batch_size, sequence_length
                 )
 
-                val_logits = model(val_inputs)
+                val_logits, _ = model(val_inputs)
 
                 val_loss = F.cross_entropy(
                     val_logits.reshape(-1, vocab_size), val_targets.reshape(-1)
@@ -486,7 +546,7 @@ def main():
                     "tokenizer_file": "tokenizer.json",
                 }
 
-                torch.save(best_checkpoint, "best_model.pth")
+                torch.save(best_checkpoint, "best_model_kv.pth")
 
                 print("Best model saved!")
 
@@ -496,7 +556,7 @@ def main():
     # Load Best Checkpoint
     # =========================
 
-    checkpoint = torch.load("best_model.pth", weights_only=False)
+    checkpoint = torch.load("best_model_kv.pth", weights_only=False)
 
     model = MiniGPT(
         vocab_size=checkpoint["vocab_size"],
@@ -515,9 +575,89 @@ def main():
 
     print("Best step:", checkpoint["step"])
 
-    print("Best validation loss:", best_val_loss)
+    # print("Best validation loss:", best_val_loss)
 
     print("Best model loaded!")
+
+    # =========================
+    # KV Cache Test
+    # =========================
+
+    prompt = "Bequeath"
+
+    prompt_tokens = torch.tensor([encode(prompt)], dtype=torch.long)
+
+    model.eval()
+
+    with torch.no_grad():
+
+        # First pass: full prompt
+        logits, kv_cache = model(prompt_tokens, past_kv=None, start_position=0)
+
+        print("Initial logits shape:", logits.shape)
+
+        # Generate one token
+        next_token = torch.argmax(logits[:, -1, :], dim=-1, keepdim=True)
+
+        print("Next token:", next_token.item())
+
+        # Second pass: ONLY the new token
+        logits, kv_cache = model(
+            next_token, past_kv=kv_cache, start_position=prompt_tokens.shape[1]
+        )
+
+        print("Cached logits shape:", logits.shape)
+
+        print("Updated K cache shape:", kv_cache[0][0].shape)
+
+        print("Updated V cache shape:", kv_cache[0][1].shape)
+
+    # KV Cache Correctness Test
+
+    prompt = "Bequeath"
+
+    prompt_tokens = torch.tensor([encode(prompt)], dtype=torch.long)
+
+    model.eval()
+
+    with torch.no_grad():
+
+        # -------------------------
+        # 1. Cached approach
+        # -------------------------
+
+        prompt_logits, kv_cache = model(prompt_tokens, past_kv=None, start_position=0)
+
+        next_token = torch.argmax(prompt_logits[:, -1, :], dim=-1, keepdim=True)
+
+        cached_logits, _ = model(
+            next_token, past_kv=kv_cache, start_position=prompt_tokens.shape[1]
+        )
+
+        cached_result = cached_logits[:, -1, :]
+
+        # -------------------------
+        # 2. Full-context approach
+        # -------------------------
+
+        full_tokens = torch.cat([prompt_tokens, next_token], dim=1)
+
+        full_logits, _ = model(full_tokens, past_kv=None, start_position=0)
+
+        full_result = full_logits[:, -1, :]
+
+        # -------------------------
+        # 3. Compare
+        # -------------------------
+
+        difference = (full_result - cached_result).abs().max().item()
+
+        print("Max difference:", difference)
+
+        print(
+            "Same logits:",
+            torch.allclose(full_result, cached_result, atol=1e-5, rtol=1e-5),
+        )
 
     # =========================
     # Text Generation
@@ -531,15 +671,19 @@ def main():
 
         tokens = torch.tensor([encode(prompt)], dtype=torch.long)
 
+        # Make sure the prompt fits inside the context
+        if tokens.shape[1] > sequence_length:
+            tokens = tokens[:, -sequence_length:]
+
         with torch.no_grad():
 
+            # =================================
+            # First forward pass
+            # =================================
+
+            logits, kv_cache = model(tokens, past_kv=None, start_position=0)
+
             for _ in range(max_new_tokens):
-
-                # Keep only the latest context
-                tokens_cond = tokens[:, -sequence_length:]
-
-                # Forward pass
-                logits = model(tokens_cond)
 
                 # Last position
                 next_token_logits = logits[:, -1, :]
@@ -547,7 +691,10 @@ def main():
                 # Temperature
                 next_token_logits = next_token_logits / temperature
 
+                # =================================
                 # Top-k
+                # =================================
+
                 if top_k is not None:
 
                     values, indices = torch.topk(next_token_logits, top_k)
@@ -558,7 +705,10 @@ def main():
 
                     next_token_logits = filtered_logits
 
+                # =================================
                 # Top-p
+                # =================================
+
                 if top_p is not None:
 
                     sorted_logits, sorted_indices = torch.sort(
@@ -587,14 +737,29 @@ def main():
 
                     next_token_logits.scatter_(1, sorted_indices, sorted_logits)
 
-                # Convert logits to probabilities
+                # =================================
+                # Convert to probabilities
+                # =================================
+
                 probabilities = torch.softmax(next_token_logits, dim=-1)
 
+                # =================================
                 # Sample next token
+                # =================================
+
                 next_token = torch.multinomial(probabilities, num_samples=1)
 
-                # Add token
+                # Add token to output
                 tokens = torch.cat([tokens, next_token], dim=1)
+
+                # =================================
+                # KV CACHE
+                # =================================
+
+                # Only send the NEW token to the model
+                logits, kv_cache = model(
+                    next_token, past_kv=kv_cache, start_position=tokens.shape[1] - 1
+                )
 
         model.train()
 
