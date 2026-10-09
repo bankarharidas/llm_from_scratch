@@ -1,4 +1,4 @@
-from TransformerBlock import TransformerBlock
+from LLM.TransformerBlock import TransformerBlock
 import torch.nn as nn
 import torch
 
