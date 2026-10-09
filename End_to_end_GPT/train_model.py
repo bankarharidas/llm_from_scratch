@@ -1,6 +1,6 @@
 import torch
 from GPT import MiniGPT
-from Tokenizer import vocab_size, chars, stoi, itos, data, model
+from Tokenizer import vocab_size, data, model
 import torch.nn.functional as F
 
 n = int(0.9 * len(data))
@@ -92,9 +92,6 @@ checkpoint = {
     "num_blocks": num_blocks,
     "sequence_length": sequence_length,
     "ffn_hidden_size": ffn_hidden_size,
-    "chars": chars,
-    "stoi": stoi,
-    "itos": itos,
 }
 
 torch.save(checkpoint, "mini_gpt_checkpoint.pth")

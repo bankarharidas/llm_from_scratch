@@ -1,32 +1,35 @@
 import torch
 import torch.nn.functional as F
 from GPT import MiniGPT
+from tokenizers import Tokenizer
 
-with open(f"input.txt", "r", encoding="utf-8") as f:
+# =========================
+# Tokenizer
+# =========================
+
+with open("input.txt", "r", encoding="utf-8") as f:
     text = f.read()
 
+tokenizer = Tokenizer.from_file("tokenizer.json")
 
-chars = sorted(set(text))
-
-chars.append("<EOS>")
-# print(chars)
-# ["\n", " ", "a", "c", "d", "e", "f", "g", "h", "l", "m", "n", "o", "r", "s", "t", "w"]
-
-vocab_size = len(chars)
-
-stoi = {ch: i for i, ch in enumerate(chars)}
-# {"\n": 0, " ": 1, "a": 2, "c": 3, "d": 4, "e": 5, "f": 6, "g": 7, "h": 8, "l": 9, "m": 10, "n": 11, "o": 12, "r": 13, "s": 14, "t": 15, "w": 16,}
-
-itos = {i: ch for i, ch in enumerate(chars)}
+vocab_size = tokenizer.get_vocab_size()
 
 
 def encode(text):
-    return [stoi[ch] for ch in text]
+
+    encoded = tokenizer.encode(text)
+
+    return encoded.ids
 
 
 def decode(tokens):
-    return "".join(itos[token] for token in tokens)
 
+    return tokenizer.decode(tokens)
+
+
+# =========================
+# Dataset
+# =========================
 
 data = torch.tensor(encode(text), dtype=torch.long)
 

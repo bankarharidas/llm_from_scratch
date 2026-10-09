@@ -1,8 +1,8 @@
 import torch
 from GPT import MiniGPT
-from Tokenizer import chars, encode, decode, model, sequence_length
+from Tokenizer import encode, decode, model, sequence_length
 
-vocab_size = len(chars)
+# vocab_size = len(chars)
 
 
 # -------------------------
@@ -125,14 +125,14 @@ step = checkpoint["step"]
 
 print("Loaded step:", step)
 
-chars = checkpoint["chars"]
-stoi = checkpoint["stoi"]
-itos = checkpoint["itos"]
+# chars = checkpoint["chars"]
+# stoi = checkpoint["stoi"]
+# itos = checkpoint["itos"]
 
 result = generate(
     loaded_model,
-    "My clerk hath some good comforts too for you ",
-    max_new_tokens=100,
+    "All of one nature of one substance bred",
+    max_new_tokens=500,
     temperature=0.8,
     top_k=5,
     top_p=0.9,
