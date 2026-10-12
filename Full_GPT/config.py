@@ -20,4 +20,4 @@ warmup_steps = 500
 num_steps = 10000
 
 # Checkpoint
-checkpoint_file = "best_model_kv.pth"
+checkpoint_file = "best_model_rope.pth"
