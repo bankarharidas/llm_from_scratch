@@ -13,6 +13,7 @@ A step-by-step engineering and learning journey building a Generative Pretrained
   - [Stage 3: End-to-End Character & BPE Models (`End_to_end_GPT/`)](#stage-3-end-to-end-character--bpe-models-end_to_end_gpt)
   - [Stage 4: State-of-the-Art Modern GPT (`Full_GPT/`)](#stage-4-state-of-the-art-modern-gpt-full_gpt)
 - [Architecture & Modern Innovations](#-architecture--modern-innovations)
+  - [Architecture Diagrams (Text / ASCII)](#-architecture-diagrams-text--ascii)
   - [1. Rotary Positional Embeddings (RoPE)](#1-rotary-positional-embeddings-rope)
   - [2. Root Mean Square Normalization (RMSNorm)](#2-root-mean-square-normalization-rmsnorm)
   - [3. SwiGLU Activation](#3-swiglu-activation)
@@ -99,6 +100,119 @@ The pinnacle of the project—implements the modern open-source LLM standard (LL
 | **Activation & FFN** | GELU / ReLU MLP | **SwiGLU** | Gated linear unit; higher quality per parameter count |
 | **Inference Generation** | Full-context recomputation ($O(T^2)$) | **KV-Cache** ($O(1)$ per step) | Massive speedup during autoregressive decoding |
 | **Tokenization** | Character-level / Simple | **Byte-Level BPE (8k vocab)** | Handles arbitrary text, emojis, and code without `<UNK>` |
+
+### 📐 Architecture Diagrams (Text / ASCII)
+
+#### 1. Full Model Flow (`MiniGPT`)
+
+```text
+                      Input Token IDs (B, T)
+                                │
+                                ▼
+                   ┌──────────────────────────┐
+                   │     Token Embedding      │  (vocab_size -> embedding_size)
+                   └────────────┬─────────────┘
+                                │  x : (B, T, D)
+                                ▼
+                   ┌──────────────────────────┐ ◄───┐
+                   │    Transformer Block 1   │     │
+                   └────────────┬─────────────┘     │
+                                │                   │
+                                ▼                   │  Repeated for
+                   ┌──────────────────────────┐     │  num_blocks (N layers)
+                   │    Transformer Block 2   │     │  with KV-Cache support
+                   └────────────┬─────────────┘     │
+                                │                   │
+                                ▼                   │
+                   ┌──────────────────────────┐     │
+                   │    Transformer Block N   │ ────┘
+                   └────────────┬─────────────┘
+                                │  x : (B, T, D)
+                                ▼
+                   ┌──────────────────────────┐
+                   │   Final RMSNorm Layer    │
+                   └────────────┬─────────────┘
+                                │
+                                ▼
+                   ┌──────────────────────────┐
+                   │    Linear Output Head    │  (embedding_size -> vocab_size)
+                   └────────────┬─────────────┘
+                                │
+                                ▼
+                         Logits (B, T, V)
+```
+
+#### 2. Transformer Block Detail (`Pre-RMSNorm` + `RoPE Attention` + `SwiGLU`)
+
+```text
+                        Input: x (B, T, D)
+                          │           │
+                          │ (Residual)│
+                          │           ▼
+                          │     ┌───────────┐
+                          │     │  RMSNorm  │
+                          │     └─────┬─────┘
+                          │           ▼
+                          │     ┌───────────────────────────────────────────┐
+                          │     │      Multi-Head Attention (RoPE + KV)     │
+                          │     │                                           │
+                          │     │  Q, K, V Projections (W_Q, W_K, W_V)      │
+                          │     │       │                                   │
+                          │     │       ├──> Q, K -> RoPE Rotation          │
+                          │     │       ├──> KV Caching: [past_kv, new_kv]  │
+                          │     │       └──> Causal Masked Softmax(Q K^T) V │
+                          │     │       │                                   │
+                          │     │  Output Projection W_O                    │
+                          │     └─────┬─────────────────────────────────────┘
+                          │           ▼
+                          └───────► ( + ) Add Attention Residual
+                                      │
+                                      ├──────────────┐ (Residual)
+                                      ▼              │
+                                ┌───────────┐        │
+                                │  RMSNorm  │        │
+                                └─────┬─────┘        │
+                                      ▼              │
+                                ┌─────────────────┐  │
+                                │  SwiGLU FFN     │  │
+                                │                 │  │
+                                │ gate = SiLU(xW) │  │
+                                │ up   = xW_up    │  │
+                                │ out  = (g * u)W │  │
+                                └─────┬───────────┘  │
+                                      ▼              │
+                                    ( + ) ◄──────────┘ Add MLP Residual
+                                      │
+                                      ▼
+                             Output: x (B, T, D)
+```
+
+#### 3. Tensor Dimensions Legend (Longform Breakdown)
+
+| Symbol | Longform Name | Description & Meaning in Model | Example Value (`config.py`) |
+| :---: | :--- | :--- | :---: |
+| **`B`** | **Batch Size** | Number of independent sequences processed simultaneously in parallel. | `8` |
+| **`T`** | **Time / Sequence Length (Tokens)** | Number of token positions in the context window (sequence length). | `128` |
+| **`H`** | **Heads (`num_heads`)** | Number of parallel attention heads inside Multi-Head Attention. | `4` |
+| **`D`** | **Dimension / Head Dimension (`head_dim`)** | Dimensionality per individual attention head ($D = C / H$). In RoPE, each 2D pair in $D$ is rotated. | `32` ($128 / 4$) |
+| **`C`** | **Channels / Embedding Size (`embedding_size`)** | Total embedding vector size for each token ($C = H \times D$). | `128` |
+| **`V`** | **Vocabulary Size (`vocab_size`)** | Total unique subwords/tokens in the tokenizer vocabulary. | `8000` |
+
+```text
+┌──────────────────────────────────────────────────────────────────────────┐
+│                      TENSOR SHAPE EVOLUTION CHEATSHEET                   │
+├──────────────────────────────────────────────────────────────────────────┤
+│ Tokens Input        : (B, T)                -> (8, 128)                  │
+│ Token Embeddings    : (B, T, C)             -> (8, 128, 128)             │
+│ Q, K, V Projections : (B, T, C)             -> (8, 128, 128)             │
+│ Split into Heads    : (B, H, T, D)          -> (8, 4, 128, 32)           │
+│ RoPE Application    : (B, H, T, D)          -> (8, 4, 128, 32)           │
+│ Attention Matrix    : (B, H, T, T_keys)     -> (8, 4, 128, 128)          │
+│ Attention Out x V   : (B, H, T, D)          -> (8, 4, 128, 32)           │
+│ Concat Heads (W_O)  : (B, T, C)             -> (8, 128, 128)             │
+│ Final Logits        : (B, T, V)             -> (8, 128, 8000)            │
+└──────────────────────────────────────────────────────────────────────────┘
+```
 
 ### 1. Rotary Positional Embeddings (RoPE)
 Instead of adding positional vectors to token embeddings, RoPE rotates Query and Key representations in 2D coordinate slices based on their sequence position $m$:
