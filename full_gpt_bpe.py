@@ -5,6 +5,9 @@ import torch.nn as nn
 import torch.nn.functional as F
 from tokenizers import Tokenizer
 
+device = torch.device("xpu")
+print(f"Using device: {torch.xpu.get_device_name(0)}")
+
 # =========================
 # Configuration
 # =========================
@@ -550,299 +553,51 @@ def main():
 
     print("Best model loaded!")
 
-    import time
+    # # Step 5: Final inference test
 
-    # import torch
+    # # Load tokenizer
+    # inference_tokenizer = Tokenizer.from_file("tokenizer.json")
 
-    prompt = "Bequeath"
+    # # Create a fresh model
+    # inference_model = MiniGPT(
+    #     vocab_size=vocab_size,
+    #     embedding_size=embedding_size,
+    #     num_heads=num_heads,
+    #     num_blocks=num_blocks,
+    #     sequence_length=sequence_length,
+    #     ffn_hidden_size=ffn_hidden_size,
+    # )
 
-    prompt_tokens = torch.tensor([encode(prompt)], dtype=torch.long)
+    # # Load the saved test checkpoint
+    # checkpoint = torch.load(
+    #     "checkpoint_test.pth", map_location="cpu", weights_only=True
+    # )
 
-    model.eval()
+    # inference_model.load_state_dict(checkpoint["model_state_dict"])
 
-    print("Prompt token shape:", prompt_tokens.shape)
-    print("Model is ready for speed testing!")
+    # inference_model.eval()
 
-    def generate_without_cache(model, prompt_tokens, max_new_tokens):
+    # # Encode a prompt using the loaded tokenizer
+    # prompt = "Bequeath"
 
-        tokens = prompt_tokens.clone()
+    # input_ids = inference_tokenizer.encode(prompt).ids
 
-        model.eval()
+    # tokens = torch.tensor([input_ids], dtype=torch.long)
 
-        with torch.no_grad():
+    # # Generate five tokens using KV cache
+    # with torch.no_grad():
 
-            for _ in range(max_new_tokens):
+    #     logits, kv_cache = inference_model(tokens, past_kv=None, start_position=0)
 
-                # Keep context within the model's limit
-                tokens_cond = tokens[:, -sequence_length:]
+    #     for _ in range(5):
 
-                # Full forward pass; no KV cache
-                logits, _ = model(tokens_cond, past_kv=None, start_position=0)
+    #         next_token = torch.argmax(logits[:, -1, :], dim=-1, keepdim=True)
 
-                # Choose the most likely next token
-                next_token = torch.argmax(logits[:, -1, :], dim=-1, keepdim=True)
+    #         tokens = torch.cat([tokens, next_token], dim=1)
 
-                tokens = torch.cat([tokens, next_token], dim=1)
-
-        return tokens
-
-    start_time = time.perf_counter()
-
-    test_output = generate_without_cache(model, prompt_tokens, max_new_tokens=50)
-
-    no_cache_time = time.perf_counter() - start_time
-
-    print("Generated tokens:", 50)
-    print("Time without KV cache:", round(no_cache_time, 4), "seconds")
-    print("Generated text:")
-    print(decode(test_output[0].tolist()))
-
-    def generate_with_cache(model, prompt_tokens, max_new_tokens):
-
-        tokens = prompt_tokens.clone()
-        model.eval()
-
-        with torch.no_grad():
-
-            # Process the prompt once and create the cache
-            logits, kv_cache = model(tokens, past_kv=None, start_position=0)
-
-            for _ in range(max_new_tokens):
-
-                next_token = torch.argmax(logits[:, -1, :], dim=-1, keepdim=True)
-
-                tokens = torch.cat([tokens, next_token], dim=1)
-
-                # Process only the newly generated token
-                logits, kv_cache = model(
-                    next_token, past_kv=kv_cache, start_position=tokens.shape[1] - 1
-                )
-
-        return tokens
-
-    start_time = time.perf_counter()
-
-    cached_output = generate_with_cache(model, prompt_tokens, max_new_tokens=50)
-
-    cache_time = time.perf_counter() - start_time
-
-    print("Generated tokens:", 50)
-    print("Time with KV cache:", round(cache_time, 4), "seconds")
-    print("Generated text:")
-    print(decode(cached_output[0].tolist()))
-
-    # import time
-
-    # Warm-up: allow initial execution overhead to settle
-    generate_without_cache(model, prompt_tokens, 10)
-    generate_with_cache(model, prompt_tokens, 10)
-
-    # Benchmark settings
-    repeats = 5
-    max_new_tokens = 50
-
-    no_cache_times = []
-    cache_times = []
-
-    # Test without KV cache
-    for _ in range(repeats):
-        start = time.perf_counter()
-
-        generate_without_cache(model, prompt_tokens, max_new_tokens)
-
-        no_cache_times.append(time.perf_counter() - start)
-
-    # Test with KV cache
-    for _ in range(repeats):
-        start = time.perf_counter()
-
-        generate_with_cache(model, prompt_tokens, max_new_tokens)
-
-        cache_times.append(time.perf_counter() - start)
-
-    # Calculate averages
-    avg_no_cache = sum(no_cache_times) / repeats
-    avg_cache = sum(cache_times) / repeats
-
-    print("Without KV cache:", [round(t, 4) for t in no_cache_times])
-    print("With KV cache:   ", [round(t, 4) for t in cache_times])
-
-    print("\nAverage without cache:", round(avg_no_cache, 4), "seconds")
-    print("Average with cache:   ", round(avg_cache, 4), "seconds")
-    print("Speedup:", round(avg_no_cache / avg_cache, 2), "x")
-    print("Time saved:", round((avg_no_cache - avg_cache) * 1000, 2), "milliseconds")
-
-    # Step 1: Test the context-window limit
-
-    print("Model context length:", sequence_length)
-
-    # Create a prompt longer than the context window
-    long_test_tokens = torch.randint(0, vocab_size, (1, sequence_length + 10))
-
-    print("Test prompt shape:", long_test_tokens.shape)
-
-    # Check whether the model correctly rejects an oversized input
-    try:
-        with torch.no_grad():
-            model(long_test_tokens, past_kv=None, start_position=0)
-
-        print("Model accepted the oversized prompt.")
-
-    except AssertionError:
-        print("Model correctly rejected the oversized prompt.")
-
-    # Step 2: Test long-prompt generation with KV cache
-
-    long_test_tokens = torch.randint(0, vocab_size, (1, sequence_length + 10))
-
-    # Trim the prompt to the model's context limit
-    long_test_tokens = long_test_tokens[:, -sequence_length:]
-
-    print("Prompt after trimming:", long_test_tokens.shape)
-
-    # Generate 5 tokens
-    long_output = generate_with_cache(model, long_test_tokens, max_new_tokens=5)
-
-    print("Output shape:", long_output.shape)
-    print("Expected shape:", (1, sequence_length + 5))
-    print("Test passed:", long_output.shape == (1, sequence_length + 5))
-
-    # Step 3: Checkpoint save/load test
-
-    # import torch
-
-    test_tokens = torch.tensor([encode("Bequeath")], dtype=torch.long)
-
-    model.eval()
-
-    # Record predictions before saving
-    with torch.no_grad():
-        logits_before, _ = model(test_tokens)
-
-    # Save a temporary checkpoint
-    test_checkpoint_path = "checkpoint_test.pth"
-
-    torch.save(
-        {
-            "model_state_dict": model.state_dict(),
-            "vocab_size": vocab_size,
-            "embedding_size": embedding_size,
-            "num_heads": num_heads,
-            "num_blocks": num_blocks,
-            "sequence_length": sequence_length,
-            "ffn_hidden_size": ffn_hidden_size,
-        },
-        test_checkpoint_path,
-    )
-
-    # Create a fresh model with the same architecture
-    fresh_model = MiniGPT(
-        vocab_size=vocab_size,
-        embedding_size=embedding_size,
-        num_heads=num_heads,
-        num_blocks=num_blocks,
-        sequence_length=sequence_length,
-        ffn_hidden_size=ffn_hidden_size,
-    )
-
-    # Load saved weights
-    checkpoint = torch.load(test_checkpoint_path, map_location="cpu", weights_only=True)
-
-    fresh_model.load_state_dict(checkpoint["model_state_dict"])
-
-    fresh_model.eval()
-
-    # Compare predictions
-    with torch.no_grad():
-        logits_after, _ = fresh_model(test_tokens)
-
-    print(
-        "Predictions match:",
-        torch.allclose(logits_before, logits_after, atol=1e-6, rtol=1e-5),
-    )
-
-    print("Maximum difference:", (logits_before - logits_after).abs().max().item())
-
-    # Step 4: Tokenizer compatibility test
-
-    # from tokenizers import Tokenizer
-
-    # Load the saved tokenizer from disk
-    loaded_tokenizer = Tokenizer.from_file("tokenizer.json")
-
-    test_text = "Bequeath"
-
-    # Encode using the current tokenizer
-    original_ids = encode(test_text)
-
-    # Encode using the freshly loaded tokenizer
-    loaded_ids = loaded_tokenizer.encode(test_text).ids
-
-    print("Original token IDs:", original_ids)
-    print("Loaded token IDs:  ", loaded_ids)
-
-    print("Token IDs match:", original_ids == loaded_ids)
-
-    # Decode using the loaded tokenizer
-    decoded_text = loaded_tokenizer.decode(loaded_ids)
-
-    print("Decoded text:", decoded_text)
-
-    # Step 5: Final inference test
-
-    # import torch
-    # from tokenizers import Tokenizer
-
-    # Load tokenizer
-    inference_tokenizer = Tokenizer.from_file("tokenizer.json")
-
-    # Create a fresh model
-    inference_model = MiniGPT(
-        vocab_size=vocab_size,
-        embedding_size=embedding_size,
-        num_heads=num_heads,
-        num_blocks=num_blocks,
-        sequence_length=sequence_length,
-        ffn_hidden_size=ffn_hidden_size,
-    )
-
-    # Load the saved test checkpoint
-    checkpoint = torch.load(
-        "checkpoint_test.pth", map_location="cpu", weights_only=True
-    )
-
-    inference_model.load_state_dict(checkpoint["model_state_dict"])
-
-    inference_model.eval()
-
-    # Encode a prompt using the loaded tokenizer
-    prompt = "Bequeath"
-
-    input_ids = inference_tokenizer.encode(prompt).ids
-
-    tokens = torch.tensor([input_ids], dtype=torch.long)
-
-    # Generate five tokens using KV cache
-    with torch.no_grad():
-
-        logits, kv_cache = inference_model(tokens, past_kv=None, start_position=0)
-
-        for _ in range(5):
-
-            next_token = torch.argmax(logits[:, -1, :], dim=-1, keepdim=True)
-
-            tokens = torch.cat([tokens, next_token], dim=1)
-
-            logits, kv_cache = inference_model(
-                next_token, past_kv=kv_cache, start_position=tokens.shape[1] - 1
-            )
-
-    generated_text = inference_tokenizer.decode(tokens[0].tolist())
-
-    print("Prompt:", prompt)
-    print("Generated text:", generated_text)
-    print("Total token count:", tokens.shape[1])
-    print("Inference test passed:", tokens.shape[1] == len(input_ids) + 5)
+    #         logits, kv_cache = inference_model(
+    #             next_token, past_kv=kv_cache, start_position=tokens.shape[1] - 1
+    #         )
 
     # =========================
     # KV Cache Test
@@ -1030,22 +785,22 @@ def main():
 
         return decode(tokens[0].tolist())
 
-    # # =========================
-    # # Generation
-    # # =========================
+    # =========================
+    # Generation
+    # =========================
 
-    # generated_text = generate(
-    #     model,
-    #     prompt="Bequeath",
-    #     max_new_tokens=100,
-    #     temperature=0.1,
-    #     top_k=1,
-    #     top_p=None,
-    # )
+    generated_text = generate(
+        model,
+        prompt="my lady?",
+        max_new_tokens=100,
+        temperature=0.1,
+        top_k=1,
+        top_p=None,
+    )
 
-    # print()
-    # print("Generated text:")
-    # print(generated_text)
+    print()
+    print("Generated text:")
+    print(generated_text)
 
 
 # =========================

@@ -1,0 +1,42 @@
+[AI training]
+name = "llm-from-scratch"
+version = "0.1.0"
+description = "AI training project on Intel GPU via PyTorch XPU"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "torch",
+    "torchvision",
+    "torchaudio",
+    "intel-extension-for-pytorch",
+    "tokenizers>=0.23.3",
+]
+
+[tool.uv]
+# Tell uv to only resolve wheels compatible with 64-bit Windows
+environments = [
+    "sys_platform == 'win32' and platform_machine == 'AMD64'",
+]
+
+[[tool.uv.index]]
+name = "pytorch-xpu"
+url = "https://download.pytorch.org/whl/xpu"
+explicit = true
+
+[[tool.uv.index]]
+name = "intel-ipex"
+url = "https://pytorch-extension.intel.com/release-whl/stable/xpu/us/"
+explicit = true
+
+[project.scripts]
+llm-from-scratch = "llm_from_scratch:main"
+
+[build-system]
+requires = ["uv_build>=0.12.3,<0.13.0"]
+build-backend = "uv_build"
+
+[tool.uv.sources]
+torch = { index = "pytorch-xpu" }
+torchvision = { index = "pytorch-xpu" }
+torchaudio = { index = "pytorch-xpu" }
+intel-extension-for-pytorch = { index = "intel-ipex" }
