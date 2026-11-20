@@ -34,9 +34,10 @@ A step-by-step engineering and learning journey building a Generative Pretrained
 
 ## 🌟 Overview
 
-Modern Large Language Models (such as LLaMA 2/3, Mistral, and Gemma) incorporate significant architectural refinements over the original 2017 Transformer (*"Attention Is All You Need"*) and GPT-2/3.
+Modern Large Language Models (such as LLaMA 2/3, Mistral, and Gemma) incorporate significant architectural refinements over the original 2017 Transformer (_"Attention Is All You Need"_) and GPT-2/3.
 
 This repository tracks the entire progression:
+
 1. **Mathematical fundamentals**: Gradients, single neurons, feed-forward layers, manual attention calculations.
 2. **Standard Transformer**: Multi-head self-attention, causal masking, absolute positional embeddings, standard layer normalization.
 3. **Modern Foundation LLM Architecture**:
@@ -51,7 +52,9 @@ This repository tracks the entire progression:
 ## 🚀 The Learning Journey (Roadmap)
 
 ### Stage 1: Deep Learning Foundations (`Learn/`)
+
 Focuses on understanding how individual neural components operate and how forward and backward passes function in PyTorch:
+
 - `neuron.py`: A single scalar neuron ($y = w \cdot x + b$) with autograd.
 - `layer.py` & `network.py`: Linear transformations and multi-layer perceptrons.
 - `Token_Embedding.py`: Mapping discrete token IDs to dense vectors (`nn.Embedding`).
@@ -64,7 +67,9 @@ Focuses on understanding how individual neural components operate and how forwar
 ---
 
 ### Stage 2: Modular Attention & Transformers (`LLM/`)
+
 Packages learned primitives into clean, reusable PyTorch modules:
+
 - `self_attention.py`: Scaled dot-product self-attention class.
 - `Multi_Head_Attention.py`: Splitting embeddings into $H$ parallel heads.
 - `TransformerBlock.py`: Pre-layer normalization transformer block (Attention + MLP + Residuals).
@@ -74,7 +79,9 @@ Packages learned primitives into clean, reusable PyTorch modules:
 ---
 
 ### Stage 3: End-to-End Character & BPE Models (`End_to_end_GPT/`)
+
 A bridge toward modern architectures:
+
 - Integrates the Hugging Face `tokenizers` library for custom Byte-Pair Encoding (BPE).
 - Introduces **RMSNorm** and **SwiGLU** in `GPT.py`.
 - Implements end-to-end tokenization and training scripts (`train_tokenizer.py`, `train_model.py`, `generate.py`).
@@ -82,7 +89,9 @@ A bridge toward modern architectures:
 ---
 
 ### Stage 4: State-of-the-Art Modern GPT (`Full_GPT/`)
+
 The pinnacle of the project—implements the modern open-source LLM standard (LLaMA/Mistral architecture):
+
 - **RoPE (Rotary Position Embeddings)** replaces absolute position tables.
 - **Fast KV-Cache** during autoregressive generation for real-time decoding.
 - **Verified KV Cache Testing** via `test_kv_cache.py`.
@@ -93,13 +102,13 @@ The pinnacle of the project—implements the modern open-source LLM standard (LL
 
 ## 🔬 Architecture & Modern Innovations
 
-| Component | Classical GPT (GPT-2) | Modern Implementation (`Full_GPT`) | Advantage |
-| :--- | :--- | :--- | :--- |
-| **Positional Encoding** | Absolute Learned Embeddings | **Rotary Position Embeddings (RoPE)** | Captures relative distance; supports longer contexts |
-| **Normalization** | Standard LayerNorm ($\mu, \sigma^2$) | **RMSNorm** | Omits mean calculation; faster computation & stable gradients |
-| **Activation & FFN** | GELU / ReLU MLP | **SwiGLU** | Gated linear unit; higher quality per parameter count |
-| **Inference Generation** | Full-context recomputation ($O(T^2)$) | **KV-Cache** ($O(1)$ per step) | Massive speedup during autoregressive decoding |
-| **Tokenization** | Character-level / Simple | **Byte-Level BPE (8k vocab)** | Handles arbitrary text, emojis, and code without `<UNK>` |
+| Component                | Classical GPT (GPT-2)                 | Modern Implementation (`Full_GPT`)    | Advantage                                                     |
+| :----------------------- | :------------------------------------ | :------------------------------------ | :------------------------------------------------------------ |
+| **Positional Encoding**  | Absolute Learned Embeddings           | **Rotary Position Embeddings (RoPE)** | Captures relative distance; supports longer contexts          |
+| **Normalization**        | Standard LayerNorm ($\mu, \sigma^2$)  | **RMSNorm**                           | Omits mean calculation; faster computation & stable gradients |
+| **Activation & FFN**     | GELU / ReLU MLP                       | **SwiGLU**                            | Gated linear unit; higher quality per parameter count         |
+| **Inference Generation** | Full-context recomputation ($O(T^2)$) | **KV-Cache** ($O(1)$ per step)        | Massive speedup during autoregressive decoding                |
+| **Tokenization**         | Character-level / Simple              | **Byte-Level BPE (8k vocab)**         | Handles arbitrary text, emojis, and code without `<UNK>`      |
 
 ### 📐 Architecture Diagrams (Text / ASCII)
 
@@ -189,14 +198,14 @@ The pinnacle of the project—implements the modern open-source LLM standard (LL
 
 #### 3. Tensor Dimensions Legend (Longform Breakdown)
 
-| Symbol | Longform Name | Description & Meaning in Model | Example Value (`config.py`) |
-| :---: | :--- | :--- | :---: |
-| **`B`** | **Batch Size** | Number of independent sequences processed simultaneously in parallel. | `8` |
-| **`T`** | **Time / Sequence Length (Tokens)** | Number of token positions in the context window (sequence length). | `128` |
-| **`H`** | **Heads (`num_heads`)** | Number of parallel attention heads inside Multi-Head Attention. | `4` |
-| **`D`** | **Dimension / Head Dimension (`head_dim`)** | Dimensionality per individual attention head ($D = C / H$). In RoPE, each 2D pair in $D$ is rotated. | `32` ($128 / 4$) |
-| **`C`** | **Channels / Embedding Size (`embedding_size`)** | Total embedding vector size for each token ($C = H \times D$). | `128` |
-| **`V`** | **Vocabulary Size (`vocab_size`)** | Total unique subwords/tokens in the tokenizer vocabulary. | `8000` |
+| Symbol  | Longform Name                                    | Description & Meaning in Model                                                                       | Example Value (`config.py`) |
+| :-----: | :----------------------------------------------- | :--------------------------------------------------------------------------------------------------- | :-------------------------: |
+| **`B`** | **Batch Size**                                   | Number of independent sequences processed simultaneously in parallel.                                |             `8`             |
+| **`T`** | **Time / Sequence Length (Tokens)**              | Number of token positions in the context window (sequence length).                                   |            `128`            |
+| **`H`** | **Heads (`num_heads`)**                          | Number of parallel attention heads inside Multi-Head Attention.                                      |             `4`             |
+| **`D`** | **Dimension / Head Dimension (`head_dim`)**      | Dimensionality per individual attention head ($D = C / H$). In RoPE, each 2D pair in $D$ is rotated. |      `32` ($128 / 4$)       |
+| **`C`** | **Channels / Embedding Size (`embedding_size`)** | Total embedding vector size for each token ($C = H \times D$).                                       |            `128`            |
+| **`V`** | **Vocabulary Size (`vocab_size`)**               | Total unique subwords/tokens in the tokenizer vocabulary.                                            |           `8000`            |
 
 ```text
 ┌──────────────────────────────────────────────────────────────────────────┐
@@ -215,11 +224,13 @@ The pinnacle of the project—implements the modern open-source LLM standard (LL
 ```
 
 ### 1. Rotary Positional Embeddings (RoPE)
+
 Instead of adding positional vectors to token embeddings, RoPE rotates Query and Key representations in 2D coordinate slices based on their sequence position $m$:
 
 $$\mathbf{R}_{\Theta, m}^d = \text{diag}\left(R_{\theta_1, m}, R_{\theta_2, m}, \dots, R_{\theta_{d/2}, m}\right)$$
 
 In `Full_GPT/model.py`:
+
 ```python
 def apply_rope(x, start_position=0):
     B, H, T, D = x.shape
@@ -235,11 +246,13 @@ def apply_rope(x, start_position=0):
 ```
 
 ### 2. Root Mean Square Normalization (RMSNorm)
+
 RMSNorm scales inputs using the root mean square of their activations without computing or subtracting the mean:
 
 $$\text{RMSNorm}(x) = \frac{x}{\sqrt{\frac{1}{d}\sum_{i=1}^d x_i^2 + \epsilon}} \odot \gamma$$
 
 In `Full_GPT/model.py`:
+
 ```python
 class RMSNorm(nn.Module):
     def __init__(self, embedding_size, eps=1e-6):
@@ -253,11 +266,13 @@ class RMSNorm(nn.Module):
 ```
 
 ### 3. SwiGLU Activation
+
 A Gated Linear Unit with the Swish ($\text{SiLU}$) activation function:
 
 $$\text{SwiGLU}(x) = \left(\text{SiLU}(x W_{\text{gate}}) \odot x W_{\text{up}}\right) W_{\text{down}}$$
 
 In `Full_GPT/model.py`:
+
 ```python
 class SwiGLU(nn.Module):
     def __init__(self, embedding_size, hidden_size):
@@ -273,7 +288,9 @@ class SwiGLU(nn.Module):
 ```
 
 ### 4. Key-Value (KV) Caching
+
 During autoregressive generation, without a KV cache, computing token $T+1$ recomputes Keys and Values for all preceding tokens $1 \dots T$. With KV caching:
+
 - The initial prompt builds the cache `(past_k, past_v)` for each layer.
 - At each subsequent step, only the new token is fed forward ($T=1$).
 - Keys and Values of the new token are appended to `past_k` and `past_v`.
@@ -282,7 +299,9 @@ During autoregressive generation, without a KV cache, computing token $T+1$ reco
 Verified in `Full_GPT/test_kv_cache.py` with exact numerical agreement (`torch.allclose(cached, full, atol=1e-5)`).
 
 ### 5. Byte-Level BPE Tokenizer
+
 Trained with Hugging Face's `tokenizers` library using a ByteLevel pre-tokenizer and ByteLevel decoder:
+
 - Vocabulary Size: 8,000 subword units.
 - Operates on raw bytes, avoiding out-of-vocabulary (`<UNK>`) problems.
 
@@ -347,6 +366,20 @@ Follow this guide to recreate, train, and test the final `Full_GPT` model from s
 
 ### 1. Environment Setup
 
+### For Windows 11 intel GPU
+
+```
+uv python install 3.13
+uv python list
+uv python find 3.13
+$env:UV_PYTHON_NO_REGISTRY = "1"
+Get-Content .python-version
+$env:UV_PYTHON_PREFERENCE = "managed"
+"$env:APPDATA\uv\python\cpython-3.13.18-windows-x86_64-none\python.exe" --version
+Set-Content .python-version "3.13.18"
+uv sync --python 3.13.18
+```
+
 Ensure you have Python 3.9+ and PyTorch installed:
 
 ```bash
@@ -358,6 +391,7 @@ pip install tokenizers
 ```
 
 Navigate to the `Full_GPT` folder:
+
 ```bash
 cd Full_GPT
 ```
@@ -373,6 +407,7 @@ python train_tokenizer.py
 ```
 
 This will generate `tokenizer.json` with a vocabulary size of 8,000 subwords:
+
 ```text
 Tokenizer trained!
 Vocabulary size: 8000
@@ -424,6 +459,7 @@ python train.py
 ```
 
 **Training Highlights:**
+
 - **Automatic Device Selection**: Detects and utilizes CUDA GPU if available, else CPU.
 - **Warmup & Cosine Decay Schedule**:
   - Warmup for the first 500 steps up to $3\times 10^{-4}$.
@@ -432,6 +468,7 @@ python train.py
 - **Model Checkpointing**: Whenever validation loss improves, saves the full model state dict, step, and architecture metadata to `best_model_rope.pth`.
 
 Sample training log:
+
 ```text
 Device: cuda
 Vocabulary size: 8000
@@ -457,6 +494,7 @@ python test_kv_cache.py
 ```
 
 Expected output:
+
 ```text
 Prompt shape: torch.Size([1, 1])
 Cached logits shape: torch.Size([1, 8000])
@@ -475,6 +513,7 @@ python generate.py
 ```
 
 Enter any prompt when prompted:
+
 ```text
 Checkpoint file: best_model_rope.pth
 RoPE checkpoint loaded successfully!
@@ -487,6 +526,7 @@ In a quiet village, there lived an old craftsman whose hands knew every curve an
 ```
 
 You can customize the generation parameters in `Full_GPT/generate.py`:
+
 ```python
 generated_text = generate(
     model,
@@ -536,19 +576,19 @@ flowchart TD
     Top-K & Top-P Nucleus Sampling"]
 ```
 
-| Phase | Positional Encoding | Normalization | FFN | Tokenizer | KV-Cache |
-|---|---|---|---|---|---|
-| **`Learn/`** | Absolute Manual | LayerNorm | Standard Linear | Char / Minimal | ❌ |
-| **`LLM/`** | Absolute Table | LayerNorm | Standard Linear | Char / Minimal | ❌ |
-| **`End_to_end_GPT/`** | Absolute Table | RMSNorm | SwiGLU | Byte-Level BPE (8k) | ❌ |
-| **`Full_GPT/`** | **RoPE (Rotary)** | **RMSNorm** | **SwiGLU** | **Byte-Level BPE (8k)** | **✅ Yes** |
+| Phase                 | Positional Encoding | Normalization | FFN             | Tokenizer               | KV-Cache   |
+| --------------------- | ------------------- | ------------- | --------------- | ----------------------- | ---------- |
+| **`Learn/`**          | Absolute Manual     | LayerNorm     | Standard Linear | Char / Minimal          | ❌         |
+| **`LLM/`**            | Absolute Table      | LayerNorm     | Standard Linear | Char / Minimal          | ❌         |
+| **`End_to_end_GPT/`** | Absolute Table      | RMSNorm       | SwiGLU          | Byte-Level BPE (8k)     | ❌         |
+| **`Full_GPT/`**       | **RoPE (Rotary)**   | **RMSNorm**   | **SwiGLU**      | **Byte-Level BPE (8k)** | **✅ Yes** |
 
 ---
 
 ## 📜 Citation & References
 
-- Vaswani et al., *"Attention Is All You Need"* (2017)
-- Su et al., *"RoFormer: Enhanced Transformer with Rotary Position Embedding"* (2021)
-- Shazeer, *"GLU Variants Improve Transformer"* (2020)
-- Zhang & Sennrich, *"Root Mean Square Layer Normalization"* (2019)
-- Touvron et al., *"LLaMA: Open and Efficient Foundation Language Models"* (2023)
+- Vaswani et al., _"Attention Is All You Need"_ (2017)
+- Su et al., _"RoFormer: Enhanced Transformer with Rotary Position Embedding"_ (2021)
+- Shazeer, _"GLU Variants Improve Transformer"_ (2020)
+- Zhang & Sennrich, _"Root Mean Square Layer Normalization"_ (2019)
+- Touvron et al., _"LLaMA: Open and Efficient Foundation Language Models"_ (2023)
