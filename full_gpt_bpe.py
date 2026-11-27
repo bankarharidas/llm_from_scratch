@@ -7,39 +7,54 @@ from tokenizers import Tokenizer
 
 device = torch.device("xpu")
 print(f"Using device: {torch.xpu.get_device_name(0)}")
+# def get_device() -> torch.device:
+#     """Use Intel GPU (XPU) if accessible; otherwise fall back to CPU."""
+#     if hasattr(torch, "xpu") and torch.xpu.is_available():
+#         try:
+#             device = torch.device("xpu")
+#             # Verify the GPU can actually allocate memory
+#             _ = torch.zeros(1, device=device)
+#             print(f"Using Intel GPU: {torch.xpu.get_device_name(0)}")
+#             return device
+#         except Exception as e:
+#             print(f"Intel GPU detected but inaccessible ({e}). Falling back to CPU.")
+#     else:
+#         print("Intel GPU (XPU) not available. Falling back to CPU.")
+#     return torch.device("cpu")
+
 
 # =========================
 # Configuration
 # =========================
 
-batch_size = 8
-sequence_length = 128
+batch_size: int = 8
+sequence_length: int = 128
 
-embedding_size = 128
-num_heads = 4
-num_blocks = 4
-ffn_hidden_size = 512
+embedding_size: int = 128
+num_heads: int = 8
+num_blocks: int = 8
+ffn_hidden_size: int = 512
 
 # =========================
 # Learning Rate Schedule
 # =========================
-num_steps = 10001
-learning_rate = 3e-4
+num_steps: int = 10001
+learning_rate: float = 3e-4
 
-warmup_steps = 500
-decay_steps = num_steps
-min_learning_rate = 3e-5
+warmup_steps: int = 500
+decay_steps: int = num_steps
+min_learning_rate: float = 3e-5
 
 # =========================
 # Tokenizer
 # =========================
 
 with open("input.txt", "r", encoding="utf-8") as f:
-    text = f.read()
+    text: str = f.read()
 
-tokenizer = Tokenizer.from_file("tokenizer.json")
+tokenizer: Tokenizer = Tokenizer.from_file("tokenizer.json")
 
-vocab_size = tokenizer.get_vocab_size()
+vocab_size: int = tokenizer.get_vocab_size()
 
 
 def encode(text):
@@ -60,13 +75,13 @@ def decode(tokens):
 
 data = torch.tensor(encode(text), dtype=torch.long)
 
-n = int(0.9 * len(data))
+n: int = int(0.9 * len(data))
 
 train_data = data[:n]
 val_data = data[n:]
 
 
-def get_batch(data, batch_size, sequence_length):
+def get_batch(data: torch.Tensor, batch_size: int, sequence_length: int):
 
     if len(data) <= sequence_length + 1:
         raise ValueError(
@@ -77,9 +92,11 @@ def get_batch(data, batch_size, sequence_length):
 
     starts = torch.randint(0, len(data) - sequence_length - 1, (batch_size,))
 
-    x = torch.stack([data[i : i + sequence_length] for i in starts])
+    x: torch.Tensor = torch.stack([data[i : i + sequence_length] for i in starts]).to(
+        device
+    )
 
-    y = torch.stack([data[i + 1 : i + sequence_length + 1] for i in starts])
+    y = torch.stack([data[i + 1 : i + sequence_length + 1] for i in starts]).to(device)
 
     return x, y
 
@@ -115,7 +132,7 @@ class RMSNorm(nn.Module):
 # =========================
 
 
-def apply_rope(x, start_position=0):
+def apply_rope(x, start_position: int = 0):
 
     # x shape:
     # [B, num_heads, T, head_dim]
@@ -151,7 +168,7 @@ def apply_rope(x, start_position=0):
 
     rotated = torch.cat([x1 * cos - x2 * sin, x1 * sin + x2 * cos], dim=-1)
 
-    return rotated
+    return rotated.to(x.dtype)
 
 
 # =========================
@@ -161,14 +178,14 @@ def apply_rope(x, start_position=0):
 
 class MultiHeadAttention(nn.Module):
 
-    def __init__(self, embedding_size, num_heads):
+    def __init__(self, embedding_size: int, num_heads: int):
         super().__init__()
 
         assert embedding_size % num_heads == 0
 
         self.embedding_size = embedding_size
         self.num_heads = num_heads
-        self.head_dim = embedding_size // num_heads
+        self.head_dim: int = embedding_size // num_heads
 
         self.W_Q = nn.Linear(embedding_size, embedding_size)
 
@@ -216,9 +233,9 @@ class MultiHeadAttention(nn.Module):
         new_v = V
 
         # Attention scores
-        scores = Q @ K.transpose(-2, -1)
+        scores = Q @ K.transpose(-2, -1) / math.sqrt(self.head_dim)
 
-        scores = scores / math.sqrt(self.head_dim)
+        # scores = scores / math.sqrt(self.head_dim)
 
         # Causal mask
         mask = torch.tril(torch.ones(T, T, device=x.device, dtype=torch.bool))
@@ -231,9 +248,9 @@ class MultiHeadAttention(nn.Module):
         # Attention output
         output = weights @ V
 
-        output = output.transpose(1, 2)
+        output = output.transpose(1, 2).contiguous().view(B, T, C)
 
-        output = output.contiguous().view(B, T, C)
+        # output = output.contiguous().view(B, T, C)
 
         output = self.W_O(output)
 
@@ -247,14 +264,14 @@ class MultiHeadAttention(nn.Module):
 
 class SwiGLU(nn.Module):
 
-    def __init__(self, embedding_size, hidden_size):
+    def __init__(self, embedding_size: int, hidden_size: int):
         super().__init__()
 
-        self.gate = nn.Linear(embedding_size, hidden_size)
+        self.gate = nn.Linear(embedding_size, hidden_size, bias=False)
 
-        self.up = nn.Linear(embedding_size, hidden_size)
+        self.up = nn.Linear(embedding_size, hidden_size, bias=False)
 
-        self.down = nn.Linear(hidden_size, embedding_size)
+        self.down = nn.Linear(hidden_size, embedding_size, bias=False)
 
     def forward(self, x):
 
@@ -276,7 +293,7 @@ class SwiGLU(nn.Module):
 
 class TransformerBlock(nn.Module):
 
-    def __init__(self, embedding_size, num_heads, ffn_hidden_size):
+    def __init__(self, embedding_size: int, num_heads: int, ffn_hidden_size: int):
         super().__init__()
 
         self.norm1 = RMSNorm(embedding_size)
@@ -311,12 +328,12 @@ class MiniGPT(nn.Module):
 
     def __init__(
         self,
-        vocab_size,
-        embedding_size,
-        num_heads,
-        num_blocks,
-        sequence_length,
-        ffn_hidden_size,
+        vocab_size: int,
+        embedding_size: int,
+        num_heads: int,
+        num_blocks: int,
+        sequence_length: int,
+        ffn_hidden_size: int,
     ):
         super().__init__()
 
@@ -387,7 +404,7 @@ class MiniGPT(nn.Module):
 # =========================
 
 
-def get_learning_rate(step):
+def get_learning_rate(step: int):
 
     # Warmup
     if step < warmup_steps:
@@ -412,6 +429,8 @@ def get_learning_rate(step):
 
 def main():
 
+    # device = get_device()
+
     # Create model
     model = MiniGPT(
         vocab_size=vocab_size,
@@ -420,7 +439,7 @@ def main():
         num_blocks=num_blocks,
         sequence_length=sequence_length,
         ffn_hidden_size=ffn_hidden_size,
-    )
+    ).to(device)
 
     print("Parameters:", sum(p.numel() for p in model.parameters()))
 
@@ -433,98 +452,98 @@ def main():
     # Training
     # =========================
 
-    # model.train()
+    model.train()
 
-    # best_val_loss = float("inf")
+    best_val_loss = float("inf")
 
-    # for step in range(num_steps):
+    for step in range(num_steps):
 
-    #     # Get training batch
-    #     inputs, targets = get_batch(train_data, batch_size, sequence_length)
+        # Get training batch
+        inputs, targets = get_batch(train_data, batch_size, sequence_length)
 
-    #     # Forward pass
-    #     logits, _ = model(inputs)
+        # Forward pass
+        logits, _ = model(inputs).to(device)
 
-    #     # Loss
-    #     loss = F.cross_entropy(logits.reshape(-1, vocab_size), targets.reshape(-1))
+        # Loss
+        loss = F.cross_entropy(logits.reshape(-1, vocab_size), targets.reshape(-1))
 
-    #     # Backpropagation
-    #     optimizer.zero_grad()
+        # Backpropagation
+        optimizer.zero_grad()
 
-    #     loss.backward()
+        loss.backward()
 
-    #     # Gradient clipping
-    #     torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+        # Gradient clipping
+        torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
 
-    #     # Update learning rate
+        # Update learning rate
 
-    #     current_lr = get_learning_rate(step)
+        current_lr = get_learning_rate(step)
 
-    #     for param_group in optimizer.param_groups:
-    #         param_group["lr"] = current_lr
+        for param_group in optimizer.param_groups:
+            param_group["lr"] = current_lr
 
-    #     # Update parameters
-    #     optimizer.step()
+        # Update parameters
+        optimizer.step()
 
-    #     # Training loss
-    #     if step % 100 == 0:
+        # Training loss
+        if step % 100 == 0:
 
-    #         print(
-    #             f"Step {step}: " f"Train Loss {loss.item():.4f} " f"LR {current_lr:.6f}"
-    #         )
+            print(
+                f"Step {step}: " f"Train Loss {loss.item():.4f} " f"LR {current_lr:.6f}"
+            )
 
-    #     # =========================
-    #     # Validation
-    #     # =========================
+        # =========================
+        # Validation
+        # =========================
 
-    #     if step % 500 == 0:
+        if step % 500 == 0:
 
-    #         model.eval()
+            model.eval()
 
-    #         with torch.no_grad():
+            with torch.no_grad():
 
-    #             val_inputs, val_targets = get_batch(
-    #                 val_data, batch_size, sequence_length
-    #             )
+                val_inputs, val_targets = get_batch(
+                    val_data, batch_size, sequence_length
+                )
 
-    #             val_logits, _ = model(val_inputs)
+                val_logits, _ = model(val_inputs)
 
-    #             val_loss = F.cross_entropy(
-    #                 val_logits.reshape(-1, vocab_size), val_targets.reshape(-1)
-    #             )
+                val_loss = F.cross_entropy(
+                    val_logits.reshape(-1, vocab_size), val_targets.reshape(-1)
+                )
 
-    #         val_loss_value = val_loss.item()
+            val_loss_value = val_loss.item()
 
-    #         print(f"Step {step}: " f"Validation Loss {val_loss_value:.4f}")
+            print(f"Step {step}: " f"Validation Loss {val_loss_value:.4f}")
 
-    #         # =========================
-    #         # Save ONLY if better
-    #         # =========================
+            # =========================
+            # Save ONLY if better
+            # =========================
 
-    #         if val_loss_value < best_val_loss:
+            if val_loss_value < best_val_loss:
 
-    #             best_val_loss = val_loss_value
+                best_val_loss = val_loss_value
 
-    #             best_checkpoint = {
-    #                 "model_state_dict": model.state_dict(),
-    #                 "optimizer_state_dict": optimizer.state_dict(),
-    #                 "step": step,
-    #                 # Model configuration
-    #                 "vocab_size": vocab_size,
-    #                 "embedding_size": embedding_size,
-    #                 "num_heads": num_heads,
-    #                 "num_blocks": num_blocks,
-    #                 "sequence_length": sequence_length,
-    #                 "ffn_hidden_size": ffn_hidden_size,
-    #                 # BPE tokenizer
-    #                 "tokenizer_file": "tokenizer.json",
-    #             }
+                best_checkpoint = {
+                    "model_state_dict": model.state_dict(),
+                    "optimizer_state_dict": optimizer.state_dict(),
+                    "step": step,
+                    # Model configuration
+                    "vocab_size": vocab_size,
+                    "embedding_size": embedding_size,
+                    "num_heads": num_heads,
+                    "num_blocks": num_blocks,
+                    "sequence_length": sequence_length,
+                    "ffn_hidden_size": ffn_hidden_size,
+                    # BPE tokenizer
+                    "tokenizer_file": "tokenizer.json",
+                }
 
-    #             torch.save(best_checkpoint, "best_model_kv.pth")
+                torch.save(best_checkpoint, "best_model_kv.pth")
 
-    #             print("Best model saved!")
+                print("Best model saved!")
 
-    #         model.train()
+            model.train()
 
     # =========================
     # Load Best Checkpoint
@@ -540,7 +559,6 @@ def main():
         sequence_length=checkpoint["sequence_length"],
         ffn_hidden_size=checkpoint["ffn_hidden_size"],
     )
-
     model.load_state_dict(checkpoint["model_state_dict"])
 
     model.eval()
