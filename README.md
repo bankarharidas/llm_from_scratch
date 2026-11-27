@@ -366,7 +366,7 @@ Follow this guide to recreate, train, and test the final `Full_GPT` model from s
 
 ### 1. Environment Setup
 
-### For Windows 11 intel GPU
+#### For Windows 11 intel GPU
 
 ```
 uv python install 3.13
@@ -379,6 +379,8 @@ $env:UV_PYTHON_PREFERENCE = "managed"
 Set-Content .python-version "3.13.18"
 uv sync --python 3.13.18
 ```
+
+#### For All OS
 
 Ensure you have Python 3.9+ and PyTorch installed:
 
